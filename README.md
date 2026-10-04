@@ -9,7 +9,7 @@
 | **Log Source** | Telemetry the detection needs (K8s audit, Falco, kubelet, Docker, cloud audit, CNI flows…) |
 | **Sample Logs** | Realistic, sanitized sample event |
 | **Confidence Score** | 0–100 expected true-positive likelihood after baseline tuning |
-| **MITRE mapping** | ATT&CK tactics and techniques (Containers matrix), linked to attack.mitre.org |
+| **MITRE mapping** | ATT&CK **Enterprise v19.2** tactics and techniques (Containers matrix), linked to attack.mitre.org |
 
 Each use case also includes a description, vendor-neutral detection logic and known false positives.
 
@@ -82,27 +82,29 @@ After editing `assets/js/usecases.js`, run `node tools/build-data.js` to refresh
 | KSU-020 | Workload Deployed to kube-system by Non-System Identity | High | Kubernetes Audit Log | 80 | [T1036.005](https://attack.mitre.org/techniques/T1036/005/), [T1610](https://attack.mitre.org/techniques/T1610/) |
 | KSU-021 | Suspicious CronJob Created | High | Kubernetes Audit Log | 74 | [T1053.007](https://attack.mitre.org/techniques/T1053/007/) |
 | KSU-022 | DaemonSet Created or Modified (Cluster-Wide Persistence) | High | Kubernetes Audit Log | 70 | [T1543.005](https://attack.mitre.org/techniques/T1543/005/), [T1610](https://attack.mitre.org/techniques/T1610/) |
-| KSU-023 | Admission Webhook or Policy Engine Deleted / Weakened | High | Kubernetes Audit Log | 84 | [T1562.001](https://attack.mitre.org/techniques/T1562/001/) |
-| KSU-024 | NetworkPolicy Deleted or Default-Deny Removed | Medium | Kubernetes Audit Log | 70 | [T1562.007](https://attack.mitre.org/techniques/T1562/007/) |
-| KSU-025 | Control-Plane Audit Logging Disabled (EKS / AKS / GKE) | Critical | Cloud Audit Logs (CloudTrail / Azure Activity / GCP Audit) | 92 | [T1562.008](https://attack.mitre.org/techniques/T1562/008/) |
+| KSU-023 | Admission Webhook or Policy Engine Deleted / Weakened | High | Kubernetes Audit Log | 84 | [T1685](https://attack.mitre.org/techniques/T1685/) |
+| KSU-024 | NetworkPolicy Deleted or Default-Deny Removed | Medium | Kubernetes Audit Log | 70 | [T1686.001](https://attack.mitre.org/techniques/T1686/001/) |
+| KSU-025 | Control-Plane Audit Logging Disabled (EKS / AKS / GKE) | Critical | Cloud Audit Logs (CloudTrail / Azure Activity / GCP Audit) | 92 | [T1685.002](https://attack.mitre.org/techniques/T1685/002/) |
 | KSU-026 | Image from Untrusted or Public Registry Deployed | Medium | Kubernetes Audit Log<br>Kubelet Logs | 70 | [T1204.003](https://attack.mitre.org/techniques/T1204/003/), [T1525](https://attack.mitre.org/techniques/T1525/) |
 | KSU-027 | Image Signature or Admission Policy Verification Failure | High | Admission Controller (Kyverno / OPA Gatekeeper / PSA)<br>Kubernetes Audit Log | 85 | [T1195.002](https://attack.mitre.org/techniques/T1195/002/), [T1525](https://attack.mitre.org/techniques/T1525/) |
 | KSU-028 | Interactive Shell Spawned in Container | Medium | Falco (Runtime Security)<br>EDR / Linux auditd | 70 | [T1059.004](https://attack.mitre.org/techniques/T1059/004/), [T1609](https://attack.mitre.org/techniques/T1609/) |
 | KSU-029 | Container Escape Attempt (nsenter / release_agent / host mount) | Critical | Falco (Runtime Security)<br>EDR / Linux auditd | 90 | [T1611](https://attack.mitre.org/techniques/T1611/) |
-| KSU-030 | Cryptomining Activity in Container | High | Falco (Runtime Security)<br>DNS Logs (CoreDNS)<br>CNI Flow Logs (Cilium Hubble / Calico) | 90 | [T1496](https://attack.mitre.org/techniques/T1496/) |
+| KSU-030 | Cryptomining Activity in Container | High | Falco (Runtime Security)<br>DNS Logs (CoreDNS)<br>CNI Flow Logs (Cilium Hubble / Calico) | 90 | [T1496.001](https://attack.mitre.org/techniques/T1496/001/) |
 | KSU-031 | Container Drift – New Binary Dropped and Executed | High | Falco (Runtime Security)<br>EDR / Linux auditd | 76 | [T1105](https://attack.mitre.org/techniques/T1105/), [T1059.004](https://attack.mitre.org/techniques/T1059/004/) |
 | KSU-032 | Service Account Token or Sensitive File Read by Unexpected Process | High | Falco (Runtime Security)<br>EDR / Linux auditd | 74 | [T1552.001](https://attack.mitre.org/techniques/T1552/001/), [T1528](https://attack.mitre.org/techniques/T1528/) |
 | KSU-033 | Cloud Instance Metadata (IMDS) Accessed from Pod | High | Falco (Runtime Security)<br>CNI Flow Logs (Cilium Hubble / Calico) | 80 | [T1552.005](https://attack.mitre.org/techniques/T1552/005/) |
 | KSU-034 | Reverse Shell from Container | Critical | Falco (Runtime Security)<br>EDR / Linux auditd<br>CNI Flow Logs (Cilium Hubble / Calico) | 90 | [T1059.004](https://attack.mitre.org/techniques/T1059/004/), [T1095](https://attack.mitre.org/techniques/T1095/) |
 | KSU-035 | Network Scanning Tool Executed in Container | Medium | Falco (Runtime Security)<br>CNI Flow Logs (Cilium Hubble / Calico) | 80 | [T1046](https://attack.mitre.org/techniques/T1046/), [T1613](https://attack.mitre.org/techniques/T1613/) |
 | KSU-036 | Kernel Module Loaded from Container | Critical | Falco (Runtime Security)<br>EDR / Linux auditd | 88 | [T1547.006](https://attack.mitre.org/techniques/T1547/006/), [T1611](https://attack.mitre.org/techniques/T1611/) |
-| KSU-037 | Container Runtime Socket Accessed from Container | Critical | Falco (Runtime Security)<br>Docker Daemon Logs / Events<br>Kubernetes Audit Log | 88 | [T1611](https://attack.mitre.org/techniques/T1611/), [T1610](https://attack.mitre.org/techniques/T1610/) |
-| KSU-038 | Exposed Docker Remote API Used to Create or Build Containers | Critical | Docker Daemon Logs / Events<br>Host Firewall / VPC Flow Logs | 90 | [T1133](https://attack.mitre.org/techniques/T1133/), [T1610](https://attack.mitre.org/techniques/T1610/), [T1612](https://attack.mitre.org/techniques/T1612/) |
-| KSU-039 | Static Pod Manifest or Kubelet Config Tampered on Node | Critical | EDR / Linux auditd<br>File Integrity Monitoring<br>Kubelet Logs | 86 | [T1543.005](https://attack.mitre.org/techniques/T1543/005/), [T1562.001](https://attack.mitre.org/techniques/T1562/001/) |
+| KSU-037 | Container Runtime Socket Accessed from Container | Critical | Falco (Runtime Security)<br>Docker Daemon Logs / Events<br>Kubernetes Audit Log | 88 | [T1611](https://attack.mitre.org/techniques/T1611/), [T1610](https://attack.mitre.org/techniques/T1610/), [T1059.013](https://attack.mitre.org/techniques/T1059/013/) |
+| KSU-038 | Exposed Docker Remote API Used to Create or Build Containers | Critical | Docker Daemon Logs / Events<br>Host Firewall / VPC Flow Logs | 90 | [T1133](https://attack.mitre.org/techniques/T1133/), [T1610](https://attack.mitre.org/techniques/T1610/), [T1612](https://attack.mitre.org/techniques/T1612/), [T1059.013](https://attack.mitre.org/techniques/T1059/013/) |
+| KSU-039 | Static Pod Manifest or Kubelet Config Tampered on Node | Critical | EDR / Linux auditd<br>File Integrity Monitoring<br>Kubelet Logs | 86 | [T1543.005](https://attack.mitre.org/techniques/T1543/005/), [T1685](https://attack.mitre.org/techniques/T1685/) |
 | KSU-040 | Unauthenticated or Anomalous Kubelet API Access (10250) | Critical | Kubelet Logs<br>Host Firewall / VPC Flow Logs<br>Kubernetes Audit Log | 85 | [T1609](https://attack.mitre.org/techniques/T1609/), [T1133](https://attack.mitre.org/techniques/T1133/) |
 <!-- USE-CASES:END -->
 
 ## Notes
+
+- MITRE mapping follows **ATT&CK Enterprise v19.2**. v19 split Defense Evasion into **Stealth** (TA0005) and **Defense Impairment** (TA0112) and revoked several Impair Defenses sub-techniques. In this library: T1562.001 became T1685, T1562.007 became T1686.001, T1562.008 became T1685.002, cryptomining moved to T1496.001, and the new T1059.013 (Container CLI/API) was added for Docker CLI/API abuse.
 
 - Detection logic is pseudo-SPL. Translate it to Splunk SPL, Sentinel KQL, Elastic EQL/ES|QL, QRadar AQL or Chronicle YARA-L.
 - Sample logs are synthetic. They use RFC 5737 documentation IP ranges and fictitious names.

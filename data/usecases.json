@@ -10,7 +10,9 @@
     ],
     "tactics": [
       "Initial Access",
-      "Persistence"
+      "Persistence",
+      "Privilege Escalation",
+      "Stealth"
     ],
     "mitre": [
       {
@@ -120,8 +122,10 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
+      "Initial Access",
+      "Persistence",
       "Privilege Escalation",
-      "Persistence"
+      "Stealth"
     ],
     "mitre": [
       {
@@ -201,8 +205,8 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Privilege Escalation",
-      "Persistence"
+      "Persistence",
+      "Privilege Escalation"
     ],
     "mitre": [
       {
@@ -274,8 +278,10 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
+      "Initial Access",
+      "Persistence",
       "Privilege Escalation",
-      "Defense Evasion"
+      "Stealth"
     ],
     "mitre": [
       {
@@ -393,8 +399,7 @@
     ],
     "tactics": [
       "Credential Access",
-      "Lateral Movement",
-      "Defense Evasion"
+      "Lateral Movement"
     ],
     "mitre": [
       {
@@ -780,14 +785,14 @@
   {
     "id": "KSU-014",
     "name": "Kubernetes Events Deleted",
-    "category": "Defense Evasion",
+    "category": "Stealth & Defense Impairment",
     "severity": "Medium",
     "confidence": 80,
     "logSources": [
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Defense Evasion"
+      "Stealth"
     ],
     "mitre": [
       {
@@ -1235,13 +1240,13 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Defense Evasion",
-      "Execution"
+      "Execution",
+      "Stealth"
     ],
     "mitre": [
       {
         "id": "T1036.005",
-        "name": "Masquerading: Match Legitimate Name or Location"
+        "name": "Masquerading: Match Legitimate Resource Name or Location"
       },
       {
         "id": "T1610",
@@ -1389,8 +1394,9 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
+      "Execution",
       "Persistence",
-      "Execution"
+      "Privilege Escalation"
     ],
     "mitre": [
       {
@@ -1465,19 +1471,19 @@
   {
     "id": "KSU-023",
     "name": "Admission Webhook or Policy Engine Deleted / Weakened",
-    "category": "Defense Evasion",
+    "category": "Stealth & Defense Impairment",
     "severity": "High",
     "confidence": 84,
     "logSources": [
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Defense Evasion"
+      "Defense Impairment"
     ],
     "mitre": [
       {
-        "id": "T1562.001",
-        "name": "Impair Defenses: Disable or Modify Tools"
+        "id": "T1685",
+        "name": "Disable or Modify Tools"
       }
     ],
     "description": "Deletion or modification of ValidatingWebhookConfiguration / MutatingWebhookConfiguration objects, Kyverno/Gatekeeper policies, failurePolicy changed to Ignore, or the Pod Security Admission label on a namespace lowered to privileged.",
@@ -1518,19 +1524,19 @@
   {
     "id": "KSU-024",
     "name": "NetworkPolicy Deleted or Default-Deny Removed",
-    "category": "Defense Evasion",
+    "category": "Stealth & Defense Impairment",
     "severity": "Medium",
     "confidence": 70,
     "logSources": [
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Defense Evasion"
+      "Defense Impairment"
     ],
     "mitre": [
       {
-        "id": "T1562.007",
-        "name": "Impair Defenses: Disable or Modify Cloud Firewall"
+        "id": "T1686.001",
+        "name": "Disable or Modify System Firewall: Cloud Firewall"
       }
     ],
     "description": "NetworkPolicy, CiliumNetworkPolicy or Calico GlobalNetworkPolicy objects deleted or modified to allow all ingress/egress — removes segmentation to enable lateral movement or exfiltration.",
@@ -1572,19 +1578,19 @@
   {
     "id": "KSU-025",
     "name": "Control-Plane Audit Logging Disabled (EKS / AKS / GKE)",
-    "category": "Defense Evasion",
+    "category": "Stealth & Defense Impairment",
     "severity": "Critical",
     "confidence": 92,
     "logSources": [
       "Cloud Audit Logs (CloudTrail / Azure Activity / GCP Audit)"
     ],
     "tactics": [
-      "Defense Evasion"
+      "Defense Impairment"
     ],
     "mitre": [
       {
-        "id": "T1562.008",
-        "name": "Impair Defenses: Disable or Modify Cloud Logs"
+        "id": "T1685.002",
+        "name": "Disable or Modify Tools: Disable or Modify Cloud Log"
       }
     ],
     "description": "Managed Kubernetes control-plane logging (api, audit, authenticator) was disabled: EKS UpdateClusterConfig with enabled=false, AKS diagnostic setting deleted, or GKE logging component removed. Blinds every audit-based detection in this library.",
@@ -1837,8 +1843,8 @@
     ],
     "mitre": [
       {
-        "id": "T1496",
-        "name": "Resource Hijacking"
+        "id": "T1496.001",
+        "name": "Resource Hijacking: Compute Hijacking"
       }
     ],
     "description": "Execution of known miners (xmrig, cpuminer, t-rex), Stratum protocol connections (stratum+tcp, ports 3333/4444/5555/14444), DNS lookups to mining pools, or sustained CPU at limit from a new image.",
@@ -1878,8 +1884,8 @@
       "EDR / Linux auditd"
     ],
     "tactics": [
-      "Command and Control",
-      "Execution"
+      "Execution",
+      "Command and Control"
     ],
     "mitre": [
       {
@@ -2156,8 +2162,8 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
-      "Privilege Escalation",
-      "Execution"
+      "Execution",
+      "Privilege Escalation"
     ],
     "mitre": [
       {
@@ -2167,6 +2173,10 @@
       {
         "id": "T1610",
         "name": "Deploy Container"
+      },
+      {
+        "id": "T1059.013",
+        "name": "Command and Scripting Interpreter: Container CLI/API"
       }
     ],
     "description": "A process inside a container connects to /var/run/docker.sock, /run/containerd/containerd.sock or /var/run/crio/crio.sock. Access to the runtime socket allows launching a privileged container on the host, equivalent to node root.",
@@ -2207,7 +2217,8 @@
     "tactics": [
       "Initial Access",
       "Execution",
-      "Defense Evasion"
+      "Persistence",
+      "Stealth"
     ],
     "mitre": [
       {
@@ -2221,6 +2232,10 @@
       {
         "id": "T1612",
         "name": "Build Image on Host"
+      },
+      {
+        "id": "T1059.013",
+        "name": "Command and Scripting Interpreter: Container CLI/API"
       }
     ],
     "description": "The Docker Engine API on TCP 2375/2376 receives container create, exec or image build calls from an external or non-management IP. Unauthenticated Docker APIs are mass-exploited for cryptomining (TeamTNT, Kinsing) and attackers build images directly on the host to evade registry scanning.",
@@ -2242,7 +2257,7 @@
     "tactics": [
       "Persistence",
       "Privilege Escalation",
-      "Defense Evasion"
+      "Defense Impairment"
     ],
     "mitre": [
       {
@@ -2250,8 +2265,8 @@
         "name": "Create or Modify System Process: Container Service"
       },
       {
-        "id": "T1562.001",
-        "name": "Impair Defenses: Disable or Modify Tools"
+        "id": "T1685",
+        "name": "Disable or Modify Tools"
       }
     ],
     "description": "Files created or modified in /etc/kubernetes/manifests (static pods), /var/lib/kubelet/config.yaml, kubelet systemd drop-ins, or /etc/containerd/config.toml. Static pods are started by kubelet directly, bypass admission control, and survive API-level clean-up; config changes can enable anonymous auth or disable authorization.",
@@ -2271,8 +2286,9 @@
       "Kubernetes Audit Log"
     ],
     "tactics": [
+      "Initial Access",
       "Execution",
-      "Initial Access"
+      "Persistence"
     ],
     "mitre": [
       {

@@ -57,7 +57,7 @@
     <text x="330" y="192" class="c t">T1612 build on host</text>
     <text x="530" y="192" class="c xs">KSU-027</text>
     <text x="730" y="192" class="c t">T1525 implant image</text>
-    <text x="930" y="192" class="c t">T1562.001 · KSU-023</text>
+    <text x="930" y="192" class="c t">T1685 · KSU-023</text>
     <text x="1140" y="192" class="c t">T1204.003 · KSU-026</text>
   </g>
 
@@ -148,7 +148,7 @@
 
     <rect x="812" y="480" width="5" height="40" fill="#d97706"/>
     <text x="828" y="496" class="b s">Runtime socket &amp; Docker API abuse</text>
-    <text x="828" y="513" class="xs"><tspan class="t">T1610 · T1612 · T1133</tspan>   KSU-037, KSU-038</text>
+    <text x="828" y="513" class="xs"><tspan class="t">T1059.013 · T1610 · T1612</tspan>   KSU-037, KSU-038</text>
 
     <rect x="812" y="530" width="5" height="40" fill="#2b3340"/>
     <text x="828" y="546" class="b s">Kernel escape — release_agent, modules</text>
@@ -160,7 +160,7 @@
 
     <rect x="812" y="630" width="5" height="40" fill="#7c3aed"/>
     <text x="828" y="646" class="b s">Resource hijacking — cryptomining</text>
-    <text x="828" y="663" class="xs"><tspan class="t">T1496</tspan>   KSU-030, KSU-022</text>
+    <text x="828" y="663" class="xs"><tspan class="t">T1496.001</tspan>   KSU-030, KSU-022</text>
   </g>
 
   <text x="40" y="742" class="sub" font-size="11.5">Hardening reference: Pod Security Standards "restricted", read-only root FS, non-root UID, seccomp RuntimeDefault, drop ALL capabilities, signed images only.</text>
