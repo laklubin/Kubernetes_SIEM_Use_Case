@@ -23,7 +23,7 @@ Each use case also includes a description, vendor-neutral detection logic and kn
 - **Kubernetes architecture & component diagram** showing the SIEM log-source tap points
 - **Container technology stack & attack surface diagram**
 - MITRE ATT&CK coverage grid (select a technique to filter)
-- CSV / JSON export of the current filtered view, light/dark theme and shareable filter URLs
+- CSV / JSON export of the current filtered view, dark theme and shareable filter URLs
 
 ### Publish with GitHub Pages
 

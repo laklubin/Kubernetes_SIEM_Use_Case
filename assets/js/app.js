@@ -219,28 +219,34 @@
     var log = logText(u.sampleLog);
     return '<li class="uc' + (isOpen ? " open" : "") + '" id="' + u.id + '">' +
       '<div class="uc-row" data-id="' + u.id + '">' +
-        '<span class="c-id uc-id">' + u.id + "</span>" +
-        '<span class="c-name"><button type="button" class="uc-name" aria-expanded="' + isOpen + '" aria-controls="d-' + u.id + '">' + CARET +
-          "<span>" + markTerms(u.name, t) + '<span class="uc-cat">' + esc(u.category) + "</span></span></button></span>" +
-        '<span class="c-sev"><span class="sev ' + sevClass(u.severity) + '">' + u.severity + "</span></span>" +
-        '<span class="c-src tags">' + u.logSources.map(function (s) { return '<span class="tag" title="' + esc(s) + '">' + esc(s) + "</span>"; }).join("") + "</span>" +
-        '<span class="c-conf conf ' + confBand(u.confidence) + '" title="' + confLabel(u.confidence) + ' confidence"><span class="bar"><i style="width:' + u.confidence + '%"></i></span>' + u.confidence + "</span>" +
-        '<span class="c-mitre tags">' + u.mitre.map(function (m) { return '<span class="tag mitre" title="' + esc(m.name) + '">' + m.id + "</span>"; }).join("") + "</span>" +
+        '<div class="uc-top">' +
+          '<div class="uc-main">' +
+            '<p class="uc-kicker">' + u.id + " · " + esc(u.category) + "</p>" +
+            '<h3 class="uc-title"><button type="button" class="uc-name" aria-expanded="' + isOpen + '" aria-controls="d-' + u.id + '">' +
+              markTerms(u.name, t) + "</button></h3>" +
+            '<p class="uc-desc">' + markTerms(u.description, t) + "</p>" +
+          "</div>" +
+          '<span class="sev ' + sevClass(u.severity) + '">' + u.severity + "</span>" +
+        "</div>" +
+        '<div class="uc-meta">' +
+          '<p><b>Log sources to monitor:</b> <span>' + u.logSources.map(esc).join(", ") + "</span></p>" +
+          '<p><b>MITRE ATT&amp;CK:</b> ' + u.mitre.map(function (m) {
+            return '<span class="tech-ref" title="' + esc(m.name) + '">' + m.id + "</span> <span>" + esc(m.name) + "</span>";
+          }).join('<span class="sep"> · </span>') + "</p>" +
+          '<div class="uc-foot">' +
+            '<span class="conf ' + confBand(u.confidence) + '"><b>Confidence:</b> <span class="bar"><i style="width:' + u.confidence + '%"></i></span>' +
+              u.confidence + "/100 · " + confLabel(u.confidence) + "</span>" +
+            '<span class="more">' + CARET + (isOpen ? "Hide" : "Show") + " detection &amp; sample log</span>" +
+          "</div>" +
+        "</div>" +
       "</div>" +
       '<div class="uc-detail" id="d-' + u.id + '"' + (isOpen ? "" : " hidden") + ">" +
-        '<div class="full"><h4>Description</h4><p>' + markTerms(u.description, t) + "</p></div>" +
-        "<div><h4>Details</h4><dl class=\"kv\">" +
-          "<dt>Severity</dt><dd><span class=\"sev " + sevClass(u.severity) + "\">" + u.severity + "</span></dd>" +
-          "<dt>Confidence</dt><dd>" + u.confidence + " / 100 (" + confLabel(u.confidence) + ")</dd>" +
-          "<dt>Category</dt><dd>" + esc(u.category) + "</dd>" +
-          "<dt>Log sources</dt><dd>" + u.logSources.map(esc).join("<br>") + "</dd>" +
-          "<dt>Tactics</dt><dd>" + u.tactics.map(esc).join(", ") + "</dd>" +
-        "</dl></div>" +
-        "<div><h4>MITRE ATT&amp;CK</h4><ul class=\"mitre-links\">" +
+        "<div><h4>Tactics</h4><p>" + u.tactics.map(esc).join(", ") + "</p>" +
+          '<h4 style="margin-top:14px">MITRE ATT&amp;CK</h4><ul class="mitre-links">' +
           u.mitre.map(function (m) {
             return '<li><a href="' + mitreUrl(m.id) + '" target="_blank" rel="noopener"><code>' + m.id + "</code><span>" + esc(m.name) + "</span></a></li>";
-          }).join("") +
-        "</ul><h4 style=\"margin-top:14px\">False positives</h4><p>" + esc(u.falsePositives) + "</p></div>" +
+          }).join("") + "</ul></div>" +
+        "<div><h4>False positives</h4><p>" + esc(u.falsePositives) + "</p></div>" +
         '<div class="full"><h4>Detection logic <button type="button" class="btn small" data-copy="detection" data-id="' + u.id + '">Copy</button></h4>' +
           '<pre class="code wrap-lines">' + esc(u.detection) + "</pre></div>" +
         '<div class="full"><h4>Sample log' + (logIsJson ? " (JSON)" : "") + ' <button type="button" class="btn small" data-copy="log" data-id="' + u.id + '">Copy</button></h4>' +
@@ -325,6 +331,7 @@
     li.classList.toggle("open", nowOpen);
     detail.hidden = !nowOpen;
     row.querySelector(".uc-name").setAttribute("aria-expanded", String(nowOpen));
+    row.querySelector(".more").lastChild.textContent = (nowOpen ? "Hide" : "Show") + " detection & sample log";
   });
 
   els.expandAll.addEventListener("click", function () {
@@ -385,16 +392,6 @@
       var c = {}; Object.keys(u).forEach(function (k) { if (k.charAt(0) !== "_") c[k] = u[k]; }); return c;
     });
     download("kubernetes-siem-use-cases.json", "application/json", JSON.stringify(rows, null, 2));
-  });
-
-  /* ---------- theme ---------- */
-  $("#themeToggle").addEventListener("click", function () {
-    var root = document.documentElement;
-    var current = root.getAttribute("data-theme") ||
-      (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    var next = current === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    try { localStorage.setItem("ksu-theme", next); } catch (e) {}
   });
 
   /* ---------- init ---------- */
