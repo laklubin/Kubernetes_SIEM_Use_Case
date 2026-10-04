@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kubernetes SIEM Use Cases</title>
+  <meta name="description" content="40 searchable Kubernetes and container SIEM detection use cases with severity, log source, sample logs, confidence score and MITRE ATT&CK mapping.">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    // Apply saved theme before first paint to avoid a flash.
+    try { var t = localStorage.getItem("ksu-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="brand" href="#top" aria-label="Kubernetes SIEM Use Cases home">
+        <img src="assets/img/favicon.svg" alt="" width="28" height="28">
+        <span>K8s SIEM Use Cases</span>
+      </a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#architecture">Architecture</a>
+        <a href="#containers">Container tech</a>
+        <a href="#library">Use cases</a>
+        <a href="#mitre">MITRE coverage</a>
+        <a href="#method">Method</a>
+      </nav>
+      <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <p class="eyebrow">Detection engineering library</p>
+      <h1>Kubernetes &amp; Container SIEM Use Cases</h1>
+      <p class="lede">40 detections for Kubernetes clusters and container runtimes. Each one lists its severity, the log sources it needs, a sample log, a confidence score and its MITRE ATT&amp;CK mapping. You can search and filter them, and export them to CSV or JSON.</p>
+      <div class="stats" id="stats" aria-live="polite"></div>
+    </section>
+
+    <!-- ============ Architecture ============ -->
+    <section id="architecture" class="wrap section">
+      <h2>Kubernetes architecture &amp; log sources</h2>
+      <p class="section-lede">The red badges show where security telemetry is collected. Every use case below depends on one or more of these sources reaching the SIEM.</p>
+      <figure class="figure">
+        <a href="assets/img/kubernetes-architecture.svg" target="_blank" rel="noopener">
+          <img src="assets/img/kubernetes-architecture.svg" alt="Kubernetes architecture: clients connect to kube-apiserver in the control plane alongside etcd, kube-scheduler, kube-controller-manager and cloud-controller-manager; worker nodes run kubelet, kube-proxy, pods, the container runtime and the Linux kernel; a log collector forwards audit, kubelet, runtime, flow and cloud logs to the SIEM." loading="lazy" width="1280" height="780">
+        </a>
+        <figcaption>Figure 1. Kubernetes control plane, worker nodes and SIEM ingestion points (click to enlarge).</figcaption>
+      </figure>
+
+      <h3>Kubernetes components and what to log</h3>
+      <div class="table-scroll">
+        <table class="comp-table">
+          <thead>
+            <tr><th scope="col">Component</th><th scope="col">Plane</th><th scope="col">Role</th><th scope="col">Security telemetry</th><th scope="col">Key threats</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>kube-apiserver</strong></td><td>Control</td><td>Front door for all cluster operations; authentication, RBAC authorization and admission control.</td><td>Audit log (policy: Metadata / RequestResponse)</td><td>Anonymous access, RBAC abuse, secret theft, exec</td></tr>
+            <tr><td><strong>etcd</strong></td><td>Control</td><td>Key-value store holding all cluster state, including Secrets.</td><td>etcd logs, network flows to :2379/:2380</td><td>Direct secret extraction, state tampering</td></tr>
+            <tr><td><strong>kube-scheduler</strong></td><td>Control</td><td>Assigns pods to nodes based on resources, affinity and taints.</td><td>Component logs, audit (bindings)</td><td>Targeting pods onto specific nodes (nodeName / tolerations)</td></tr>
+            <tr><td><strong>kube-controller-manager</strong></td><td>Control</td><td>Runs reconcile loops (Deployments, Jobs, ServiceAccounts, CSR signing).</td><td>Component logs, audit</td><td>CSR signing abuse, token controller misuse</td></tr>
+            <tr><td><strong>cloud-controller-manager</strong></td><td>Control</td><td>Integrates with the cloud API for load balancers, routes and node lifecycle.</td><td>Cloud audit logs (CloudTrail, Azure Activity, GCP Audit)</td><td>Cloud IAM abuse, logging disabled</td></tr>
+            <tr><td><strong>kubelet</strong></td><td>Node</td><td>Node agent: starts containers via CRI, mounts volumes and service account tokens, serves API on :10250.</td><td>kubelet journal logs, flows to :10250</td><td>Unauthenticated kubelet API, static pod persistence</td></tr>
+            <tr><td><strong>kube-proxy</strong></td><td>Node</td><td>Programs iptables / IPVS / eBPF rules for Service routing.</td><td>CNI / flow logs</td><td>Traffic redirection, Service exposure</td></tr>
+            <tr><td><strong>Container runtime</strong></td><td>Node</td><td>containerd / CRI-O pull images and call runc to create containers.</td><td>Runtime logs, Docker events, socket access</td><td>Socket abuse, malicious images</td></tr>
+            <tr><td><strong>Pod / container</strong></td><td>Workload</td><td>One or more containers sharing network and volumes.</td><td>Falco / eBPF / EDR, application logs</td><td>RCE, shell, drift, mining, escape</td></tr>
+            <tr><td><strong>CNI plugin</strong></td><td>Add-on</td><td>Pod networking and NetworkPolicy enforcement (Calico, Cilium).</td><td>Hubble / Calico flow logs, DNS (CoreDNS)</td><td>Lateral movement, exfiltration, C2</td></tr>
+            <tr><td><strong>Admission controllers</strong></td><td>Add-on</td><td>Pod Security Admission, Kyverno, OPA Gatekeeper, image verification.</td><td>Policy reports, audit annotations</td><td>Policy bypass, unsigned images</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ Container technology ============ -->
+    <section id="containers" class="wrap section">
+      <h2>Container technology stack</h2>
+      <p class="section-lede">Containers are Linux processes isolated by namespaces, cgroups, capabilities, seccomp and LSMs, and with runc that kernel is the only isolation boundary. The figure links each layer to the attack techniques and use cases that cover it.</p>
+      <figure class="figure">
+        <a href="assets/img/container-technology.svg" target="_blank" rel="noopener">
+          <img src="assets/img/container-technology.svg" alt="Container technology stack: image supply chain (source, build, scan and sign, registry, admission, run), then containers, kubelet, containerd, runc, Linux kernel primitives and the host, with attack techniques mapped to MITRE ATT&amp;CK and use case IDs." loading="lazy" width="1280" height="760">
+        </a>
+        <figcaption>Figure 2. Container stack, image supply chain and attack surface mapped to ATT&amp;CK (click to enlarge).</figcaption>
+      </figure>
+    </section>
+
+    <!-- ============ Library ============ -->
+    <section id="library" class="wrap section">
+      <div class="section-head">
+        <h2>Use case library</h2>
+        <div class="actions">
+          <button type="button" class="btn" id="expandAll">Expand all</button>
+          <button type="button" class="btn" id="exportCsv">Export CSV</button>
+          <button type="button" class="btn" id="exportJson">Export JSON</button>
+        </div>
+      </div>
+
+      <div class="toolbar" role="search">
+        <label class="search">
+          <span class="sr-only">Search use cases</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="q" type="search" placeholder="Search name, technique (T1611), log source, sample log text…" autocomplete="off">
+          <kbd>/</kbd>
+        </label>
+        <div class="filters">
+          <div class="chips" id="sevChips" role="group" aria-label="Filter by severity"></div>
+          <label><span class="sr-only">Category</span><select id="fCategory"><option value="">All categories</option></select></label>
+          <label><span class="sr-only">Log source</span><select id="fSource"><option value="">All log sources</option></select></label>
+          <label><span class="sr-only">MITRE tactic</span><select id="fTactic"><option value="">All MITRE tactics</option></select></label>
+          <label><span class="sr-only">Minimum confidence</span><select id="fConf">
+            <option value="0">Any confidence</option>
+            <option value="80">High confidence (≥ 80)</option>
+            <option value="60">Medium+ (≥ 60)</option>
+          </select></label>
+          <label><span class="sr-only">Sort</span><select id="fSort">
+            <option value="id">Sort: ID</option>
+            <option value="severity">Sort: Severity</option>
+            <option value="confidence">Sort: Confidence</option>
+            <option value="name">Sort: Name</option>
+          </select></label>
+          <button type="button" class="btn ghost" id="reset">Reset</button>
+        </div>
+      </div>
+
+      <p class="result-count" id="resultCount" aria-live="polite"></p>
+
+      <div class="uc-head" aria-hidden="true">
+        <span>ID</span><span>Use case name</span><span>Severity</span><span>Log source</span><span>Confidence</span><span>MITRE ATT&amp;CK</span>
+      </div>
+      <ol class="uc-list" id="ucList"></ol>
+      <p class="empty" id="empty" hidden>No use cases match. Try a broader search or <button type="button" class="link-btn" id="reset2">reset filters</button>.</p>
+    </section>
+
+    <!-- ============ MITRE coverage ============ -->
+    <section id="mitre" class="wrap section">
+      <h2>MITRE ATT&amp;CK coverage</h2>
+      <p class="section-lede">Techniques covered by the library, grouped by tactic. Select a technique to filter the use case list.</p>
+      <div class="mitre-grid" id="mitreGrid"></div>
+    </section>
+
+    <!-- ============ Method ============ -->
+    <section id="method" class="wrap section">
+      <h2>Methodology</h2>
+      <div class="method-grid">
+        <div class="card">
+          <h3>Severity</h3>
+          <ul class="plain">
+            <li><span class="sev sev-critical">Critical</span> Cluster or node takeover, or loss of visibility. Page on-call immediately.</li>
+            <li><span class="sev sev-high">High</span> Privilege escalation, credential access or persistence. Triage within 1 hour.</li>
+            <li><span class="sev sev-medium">Medium</span> Suspicious activity that needs context. Triage the same day.</li>
+            <li><span class="sev sev-low">Low</span> Posture or hygiene signal. Review it in a weekly report.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Confidence score (0–100)</h3>
+          <p>The expected chance that an alert is a true positive once baseline tuning is in place (allow-lists for GitOps service accounts, system namespaces and approved agents). The score is based on how specific the behaviour is and how often benign tools trigger it.</p>
+          <ul class="plain">
+            <li><strong>≥ 80 High</strong>: alert directly.</li>
+            <li><strong>60–79 Medium</strong>: alert with enrichment, or correlate with another signal.</li>
+            <li><strong>&lt; 60 Low</strong>: send to dashboards, hunting or risk-based scoring.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Using the detections</h3>
+          <p>Detection logic is vendor-neutral pseudo-SPL. Translate it to your SIEM (Splunk SPL, Microsoft Sentinel KQL, Elastic EQL/ES|QL, QRadar AQL or Chronicle YARA-L). Sample logs are synthetic and sanitized. They use RFC 5737 documentation IPs and fictitious names.</p>
+          <p>Minimum telemetry: an API server audit policy at <code>Metadata</code> level, with <code>RequestResponse</code> for RBAC, pods and workloads, plus Falco or an equivalent eBPF runtime sensor on every node.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Kubernetes &amp; Container SIEM Use Case Library · MITRE ATT&amp;CK® is a registered trademark of The MITRE Corporation. Technique links go to <a href="https://attack.mitre.org/matrices/enterprise/containers/" rel="noopener">attack.mitre.org</a>.</p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/usecases.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

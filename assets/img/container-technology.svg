@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760" role="img" aria-labelledby="t d">
+  <title id="t">Container technology stack and attack surface</title>
+  <desc id="d">Image supply chain from source to runtime, the container technology stack from containers through kubelet, containerd, runc and the Linux kernel to the host, and the main container attack techniques mapped to MITRE ATT&amp;CK and to the use cases in this library.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; fill: #0f172a; }
+      .h1 { font-size: 24px; font-weight: 700; }
+      .sub { font-size: 13px; fill: #475569; }
+      .zone { font-size: 13px; font-weight: 700; letter-spacing: .08em; fill: #475569; }
+      .w { fill: #ffffff; }
+      .b { font-weight: 700; }
+      .c { text-anchor: middle; }
+      .s { font-size: 12px; }
+      .xs { font-size: 11px; }
+      .t { font-size: 11.5px; font-weight: 700; fill: #b91c1c; }
+      .chip { fill: #475569; stroke: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="760" rx="18" fill="#f8fafc"/>
+  <text x="40" y="46" class="h1">Container Technology Stack &amp; Attack Surface</text>
+  <text x="40" y="70" class="sub">From image supply chain to the Linux kernel — each layer is a detection point. Red tags are MITRE ATT&amp;CK techniques; KSU IDs are the matching use cases.</text>
+
+  <!-- ===== Supply chain ===== -->
+  <text x="40" y="106" class="zone">IMAGE SUPPLY CHAIN</text>
+  <g>
+    <rect x="40" y="118" width="180" height="56" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="130" y="142" class="c b s">Source &amp; Dockerfile</text>
+    <text x="130" y="160" class="c xs">base image · deps</text>
+    <rect x="240" y="118" width="180" height="56" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="330" y="142" class="c b s">Build (CI)</text>
+    <text x="330" y="160" class="c xs">BuildKit · Kaniko</text>
+    <rect x="440" y="118" width="180" height="56" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="530" y="142" class="c b s">Scan &amp; Sign</text>
+    <text x="530" y="160" class="c xs">Trivy · Grype · Cosign · SBOM</text>
+    <rect x="640" y="118" width="180" height="56" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="730" y="142" class="c b s">Registry</text>
+    <text x="730" y="160" class="c xs">ECR · ACR · GAR · Harbor</text>
+    <rect x="840" y="118" width="180" height="56" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="930" y="142" class="c b s">Admission</text>
+    <text x="930" y="160" class="c xs">Kyverno · Gatekeeper · PSA</text>
+    <rect x="1040" y="118" width="200" height="56" rx="10" fill="#326ce5"/>
+    <text x="1140" y="142" class="c b s w">Run</text>
+    <text x="1140" y="160" class="c xs w">kubelet → CRI → runc</text>
+    <path d="M220,146 L238,146" stroke="#475569" stroke-width="1.6" marker-end="url(#a)"/>
+    <path d="M420,146 L438,146" stroke="#475569" stroke-width="1.6" marker-end="url(#a)"/>
+    <path d="M620,146 L638,146" stroke="#475569" stroke-width="1.6" marker-end="url(#a)"/>
+    <path d="M820,146 L838,146" stroke="#475569" stroke-width="1.6" marker-end="url(#a)"/>
+    <path d="M1020,146 L1038,146" stroke="#475569" stroke-width="1.6" marker-end="url(#a)"/>
+    <text x="130" y="192" class="c t">T1195.002</text>
+    <text x="330" y="192" class="c t">T1612 build on host</text>
+    <text x="530" y="192" class="c xs">KSU-027</text>
+    <text x="730" y="192" class="c t">T1525 implant image</text>
+    <text x="930" y="192" class="c t">T1562.001 · KSU-023</text>
+    <text x="1140" y="192" class="c t">T1204.003 · KSU-026</text>
+  </g>
+
+  <!-- ===== Stack ===== -->
+  <text x="40" y="230" class="zone">CONTAINER STACK (ONE NODE)</text>
+
+  <!-- containers layer -->
+  <rect x="40" y="242" width="720" height="116" rx="12" fill="#e0f2fe" stroke="#0284c7"/>
+  <text x="56" y="262" class="b s" fill="#075985">Containers (processes in isolated namespaces)</text>
+  <g>
+    <rect x="60" y="272" width="200" height="74" rx="9" fill="#0ea5e9"/>
+    <text x="160" y="295" class="c b s w">App container</text>
+    <text x="160" y="313" class="c xs w">writable layer (drift)</text>
+    <text x="160" y="330" class="c xs w">image layers (read-only)</text>
+    <rect x="280" y="272" width="200" height="74" rx="9" fill="#0ea5e9"/>
+    <text x="380" y="295" class="c b s w">Sidecar container</text>
+    <text x="380" y="313" class="c xs w">shared net / volumes</text>
+    <text x="380" y="330" class="c xs w">/var/run/secrets/… token</text>
+    <rect x="500" y="272" width="160" height="74" rx="9" fill="#dc2626"/>
+    <text x="580" y="295" class="c b s w">Privileged pod</text>
+    <text x="580" y="313" class="c xs w">hostPID · hostPath /</text>
+    <text x="580" y="330" class="c xs w">CAP_SYS_ADMIN</text>
+  </g>
+
+  <rect x="40" y="370" width="720" height="40" rx="9" fill="#059669"/>
+  <text x="56" y="395" class="b s w">kubelet — CRI gRPC client · pulls images · mounts volumes &amp; SA tokens · API :10250</text>
+
+  <rect x="40" y="420" width="720" height="40" rx="9" fill="#d97706"/>
+  <text x="56" y="445" class="b s w">High-level runtime — containerd / CRI-O / dockerd · socket: /run/containerd/containerd.sock</text>
+
+  <rect x="40" y="470" width="720" height="40" rx="9" fill="#c2410c"/>
+  <text x="56" y="495" class="b s w">OCI runtime — runc / crun · sandboxed: gVisor (runsc) / Kata Containers</text>
+
+  <!-- kernel -->
+  <rect x="40" y="520" width="720" height="140" rx="12" fill="#334155"/>
+  <text x="56" y="542" class="b s w">Linux kernel — the only real isolation boundary for runc containers</text>
+  <g>
+    <rect x="56" y="556" width="208" height="40" rx="8" class="chip"/>
+    <text x="160" y="574" class="c b xs w">Namespaces</text>
+    <text x="160" y="589" class="c xs w">pid · net · mnt · uts · ipc · user</text>
+    <rect x="276" y="556" width="140" height="40" rx="8" class="chip"/>
+    <text x="346" y="574" class="c b xs w">cgroups v2</text>
+    <text x="346" y="589" class="c xs w">CPU · memory · pids</text>
+    <rect x="428" y="556" width="140" height="40" rx="8" class="chip"/>
+    <text x="498" y="574" class="c b xs w">Capabilities</text>
+    <text x="498" y="589" class="c xs w">drop ALL by default</text>
+    <rect x="580" y="556" width="164" height="40" rx="8" class="chip"/>
+    <text x="662" y="574" class="c b xs w">seccomp</text>
+    <text x="662" y="589" class="c xs w">RuntimeDefault profile</text>
+    <rect x="56" y="606" width="208" height="40" rx="8" class="chip"/>
+    <text x="160" y="624" class="c b xs w">LSM</text>
+    <text x="160" y="639" class="c xs w">AppArmor · SELinux</text>
+    <rect x="276" y="606" width="292" height="40" rx="8" fill="#7c3aed"/>
+    <text x="422" y="624" class="c b xs w">eBPF sensors</text>
+    <text x="422" y="639" class="c xs w">Falco · Tetragon · EDR → SIEM</text>
+    <rect x="580" y="606" width="164" height="40" rx="8" class="chip"/>
+    <text x="662" y="624" class="c b xs w">Kernel modules</text>
+    <text x="662" y="639" class="c xs w">init_module / finit_module</text>
+  </g>
+
+  <rect x="40" y="670" width="720" height="40" rx="9" fill="#94a3b8"/>
+  <text x="56" y="695" class="b s w">Host — VM / bare metal · node IAM role · IMDS 169.254.169.254 · /etc/kubernetes</text>
+
+  <!-- escape arrow -->
+  <path d="M640,348 C 730,410 742,600 712,668" stroke="#dc2626" stroke-width="3" stroke-dasharray="7 5" fill="none" marker-end="url(#ar)"/>
+  <rect x="682" y="430" width="72" height="22" rx="5" fill="#ffffff" stroke="#dc2626"/>
+  <text x="718" y="446" class="c t">T1611</text>
+
+  <!-- ===== Attack surface panel ===== -->
+  <rect x="790" y="230" width="450" height="480" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="812" y="262" class="b" font-size="16">Attack surface → ATT&amp;CK → Use case</text>
+  <g>
+    <rect x="812" y="280" width="5" height="40" fill="#0ea5e9"/>
+    <text x="828" y="296" class="b s">Shell / RCE / reverse shell in app</text>
+    <text x="828" y="313" class="xs"><tspan class="t">T1059.004 · T1095</tspan>   KSU-028, KSU-034</text>
+
+    <rect x="812" y="330" width="5" height="40" fill="#0ea5e9"/>
+    <text x="828" y="346" class="b s">Drift — binaries dropped into writable layer</text>
+    <text x="828" y="363" class="xs"><tspan class="t">T1105</tspan>   KSU-031</text>
+
+    <rect x="812" y="380" width="5" height="40" fill="#0ea5e9"/>
+    <text x="828" y="396" class="b s">Token / secret theft from the pod</text>
+    <text x="828" y="413" class="xs"><tspan class="t">T1528 · T1552.001</tspan>   KSU-032, KSU-007</text>
+
+    <rect x="812" y="430" width="5" height="40" fill="#dc2626"/>
+    <text x="828" y="446" class="b s">Privileged / host-namespace workloads</text>
+    <text x="828" y="463" class="xs"><tspan class="t">T1610 · T1611</tspan>   KSU-016 … KSU-019</text>
+
+    <rect x="812" y="480" width="5" height="40" fill="#d97706"/>
+    <text x="828" y="496" class="b s">Runtime socket &amp; Docker API abuse</text>
+    <text x="828" y="513" class="xs"><tspan class="t">T1610 · T1612 · T1133</tspan>   KSU-037, KSU-038</text>
+
+    <rect x="812" y="530" width="5" height="40" fill="#334155"/>
+    <text x="828" y="546" class="b s">Kernel escape — release_agent, modules</text>
+    <text x="828" y="563" class="xs"><tspan class="t">T1611 · T1547.006</tspan>   KSU-029, KSU-036</text>
+
+    <rect x="812" y="580" width="5" height="40" fill="#94a3b8"/>
+    <text x="828" y="596" class="b s">Cloud credential theft via IMDS</text>
+    <text x="828" y="613" class="xs"><tspan class="t">T1552.005</tspan>   KSU-033</text>
+
+    <rect x="812" y="630" width="5" height="40" fill="#7c3aed"/>
+    <text x="828" y="646" class="b s">Resource hijacking — cryptomining</text>
+    <text x="828" y="663" class="xs"><tspan class="t">T1496</tspan>   KSU-030, KSU-022</text>
+  </g>
+
+  <text x="40" y="742" class="sub" font-size="11.5">Hardening reference: Pod Security Standards "restricted", read-only root FS, non-root UID, seccomp RuntimeDefault, drop ALL capabilities, signed images only.</text>
+</svg>
